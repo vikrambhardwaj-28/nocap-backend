@@ -261,5 +261,9 @@ app.post('/api/chat-assistant', async (req, res) => {
         res.status(500).json({ reply: "Sorry, I am having trouble processing your request right now." });
     }
 });
-const PORT = process.env.PORT || 5001;
-app.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));
+// Change PORT variable name to avoid duplicate identifier errors
+const PORT_NO = process.env.PORT || 5001;
+
+app.listen(PORT_NO, '0.0.0.0', () => {
+    console.log(`NoCap Server running on port ${PORT_NO}`);
+});
