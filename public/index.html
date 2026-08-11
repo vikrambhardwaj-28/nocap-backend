@@ -430,6 +430,38 @@
             -webkit-text-fill-color: transparent;
         }
 
+        /* ANIMATED LOADING DOTS */
+        .loading-dots {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            height: 45px;
+        }
+
+        .loading-dots span {
+            width: 12px;
+            height: 12px;
+            background-color: var(--accent-color);
+            border-radius: 50%;
+            display: inline-block;
+            animation: dotPulse 1.4s infinite ease-in-out both;
+        }
+
+        .loading-dots span:nth-child(1) { animation-delay: -0.32s; }
+        .loading-dots span:nth-child(2) { animation-delay: -0.16s; }
+
+        @keyframes dotPulse {
+            0%, 80%, 100% { 
+                transform: scale(0.3); 
+                opacity: 0.3; 
+            }
+            40% { 
+                transform: scale(1); 
+                opacity: 1; 
+                box-shadow: 0 0 12px var(--accent-glow);
+            }
+        }
+
         .badge {
             padding: 0.5rem 1rem;
             border-radius: 20px;
@@ -945,6 +977,8 @@
 
     <!-- JAVASCRIPT LOGIC -->
     <script>
+        const API_BASE_URL = 'https://nocap-backend-n3pr.onrender.com';
+
         function toggleSidebar() {
             document.getElementById('sidebar').classList.toggle('active');
             document.getElementById('sidebarOverlay').classList.toggle('active');
@@ -1081,21 +1115,51 @@
             }
         }
 
+        function showLoading() {
+            const resultCard = document.getElementById('resultCard');
+            resultCard.classList.remove('hidden');
+            
+            // Render animated three dots during actual processing
+            document.getElementById('ratingScore').innerHTML = `
+                <div class="loading-dots">
+                    <span></span><span></span><span></span>
+                </div>
+            `;
+            document.getElementById('verdictBadge').innerText = "PROCESSING";
+            document.getElementById('factCheckText').innerText = "Analyzing content and verifying facts...";
+            document.getElementById('theCatchText').innerText = "Processing...";
+            document.getElementById('tldrText').innerText = "Processing...";
+        }
+
+        function hideLoading() {
+            const resultCard = document.getElementById('resultCard');
+            resultCard.classList.add('hidden');
+        }
+
         async function analyzeText() {
             const text = document.getElementById('inputText').value;
             if (!text) return alert("Please enter text or link!");
 
             showLoading();
             try {
-                const res = await fetch('/api/check-text', {
+                const res = await fetch(`${API_BASE_URL}/api/check-text`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ text })
                 });
+
                 const data = await res.json();
+
+                if (!res.ok || data.error) {
+                    hideLoading(); // Error aane par result card band kar do
+                    alert(data.error || "Unable to analyze claim.");
+                    return;
+                }
+
                 renderResult(data);
             } catch (err) {
-                alert("Error analyzing text/link.");
+                hideLoading();
+                alert("Error connecting to server. Please try again.");
             }
         }
 
@@ -1108,30 +1172,27 @@
 
             showLoading();
             try {
-                const res = await fetch('/api/check-video', {
+                const res = await fetch(`${API_BASE_URL}/api/check-video`, {
                     method: 'POST',
                     body: formData
                 });
+
                 const data = await res.json();
+
+                if (!res.ok || data.error) {
+                    hideLoading();
+                    alert(data.error || "Error analyzing video file.");
+                    return;
+                }
+
                 renderResult(data);
             } catch (err) {
-                alert("Error analyzing video file.");
+                hideLoading();
+                alert("Error connecting to server while processing video.");
             }
-        }
-
-        function showLoading() {
-            const resultCard = document.getElementById('resultCard');
-            resultCard.classList.remove('hidden');
-            document.getElementById('ratingScore').innerText = "...";
-            document.getElementById('verdictBadge').innerText = "PROCESSING";
-            document.getElementById('factCheckText').innerText = "Analyzing content, please wait...";
         }
 
         function renderResult(data) {
-            if (data.error) {
-                alert(data.error);
-                return;
-            }
             document.getElementById('ratingScore').innerText = `${data.rating}/10`;
             document.getElementById('verdictBadge').innerText = data.verdict;
             document.getElementById('factCheckText').innerText = data.factCheck;
@@ -1160,7 +1221,7 @@
             const isGeneralAi = document.getElementById('aiModeToggle').checked;
 
             try {
-                const response = await fetch('/api/chat-assistant', {
+                const response = await fetch(`${API_BASE_URL}/api/chat-assistant`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ message: msg, mode: isGeneralAi ? 'general' : 'site_help' })
