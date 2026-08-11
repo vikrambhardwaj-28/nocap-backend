@@ -4,20 +4,19 @@ const cors = require('cors');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const { exec } = require('child_process');
-const cheerio = require('cheerio');
-const axios = require('axios');
+const { execFile } = require('child_process');
 const puppeteer = require('puppeteer');
 const Groq = require('groq-sdk');
 const { extractAudio, transcribeAudio } = require('./audioService');
 
 const app = express();
 
-// Middleware
+// Middlewares
 app.use(express.json());
 app.use(cors());
 app.use(express.static('public'));
 
+// Ensure uploads directory exists
 if (!fs.existsSync('uploads')) {
     fs.mkdirSync('uploads');
 }
@@ -33,35 +32,41 @@ const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 // HELPER FUNCTIONS
 // -------------------------------------------------------------
 
-// 1. Video Links (yt-dlp)
+// 1. Secure Audio Extraction via yt-dlp (Using execFile to prevent Command Injection)
 function downloadAudioFromUrl(url, outputAudioPath) {
     return new Promise((resolve, reject) => {
-        const command = `yt-dlp -x --audio-format mp3 -o "${outputAudioPath}" "${url}"`;
-        exec(command, (error, stdout, stderr) => {
+        const args = ['-x', '--audio-format', 'mp3', '-o', outputAudioPath, url];
+        execFile('yt-dlp', args, (error, stdout, stderr) => {
             if (error) return reject(error);
             resolve(outputAudioPath);
         });
     });
 }
 
-// 2. Puppeteer Headless Scraper for Facebook/Private/JS-heavy Links
+// 2. Puppeteer Headless Scraper for Facebook/JS-heavy Links
 async function scrapeWithPuppeteer(url) {
     let browser = null;
     try {
         console.log("Launching Headless Browser for JS rendering...");
         browser = await puppeteer.launch({ 
             headless: true,
-            args: ['--no-sandbox', '--disable-setuid-sandbox']
+            args: [
+                '--no-sandbox', 
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-accelerated-2d-canvas',
+                '--no-first-run',
+                '--no-zygote',
+                '--single-process',
+                '--disable-gpu'
+            ]
         });
         const page = await browser.newPage();
         
-        // Emulate desktop browser to bypass standard bot checks
         await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
         
-        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
-        
-        // Wait 2 seconds for JS/Redirects to settle
-        await new Promise(r => setTimeout(r, 2000));
+        await new Promise(r => setTimeout(r, 2500));
 
         const extractedText = await page.evaluate(() => {
             const ogTitle = document.querySelector('meta[property="og:title"]')?.content || '';
@@ -81,56 +86,70 @@ async function scrapeWithPuppeteer(url) {
     }
 }
 
+// Helper to safely cleanup files
+function safeUnlink(filePath) {
+    if (filePath && fs.existsSync(filePath)) {
+        try {
+            fs.unlinkSync(filePath);
+        } catch (e) {
+            console.error(`Failed to delete temp file ${filePath}:`, e.message);
+        }
+    }
+}
+
 // -------------------------------------------------------------
 // 1. TEXT, LINK & ARTICLE FACT-CHECK ENDPOINT
 // -------------------------------------------------------------
 app.post('/api/check-text', async (req, res) => {
     const { text } = req.body;
-    if (!text) {
-        return res.status(400).json({ error: 'Text or claim input is required.' });
+    if (!text || typeof text !== 'string') {
+        return res.status(400).json({ error: 'Valid text or claim input is required.' });
     }
 
-    const isUrl = /^https?:\/\//i.test(text.trim());
-    let transcript = text;
+    const trimmedInput = text.trim();
+    const isUrl = /^https?:\/\//i.test(trimmedInput);
+    let transcript = trimmedInput;
+    let tempAudioPath = null;
 
     if (isUrl) {
-        console.log("Processing URL input:", text);
+        console.log("Processing URL input:", trimmedInput);
         const audioFilename = `link_${Date.now()}.mp3`;
-        const audioPath = path.join('uploads', audioFilename);
+        tempAudioPath = path.join('uploads', audioFilename);
 
         // Attempt 1: Video/Reel Audio Extraction (yt-dlp)
         try {
             console.log("Attempt 1: Trying yt-dlp audio download...");
-            await downloadAudioFromUrl(text.trim(), audioPath);
-            transcript = await transcribeAudio(audioPath);
+            await downloadAudioFromUrl(trimmedInput, tempAudioPath);
+            transcript = await transcribeAudio(tempAudioPath);
             console.log("Audio transcript received from yt-dlp.");
         } catch (videoErr) {
-            console.log("Attempt 1 failed (Not a video). Trying Headless Browser (Puppeteer)...");
-            
-            if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
+            console.log("Attempt 1 failed (Not a video/download error). Trying Headless Browser (Puppeteer)...");
+            safeUnlink(tempAudioPath);
 
-            // Attempt 2: Puppeteer Headless Scraping for Facebook/Articles
-            const puppeteerText = await scrapeWithPuppeteer(text.trim());
+            // Attempt 2: Puppeteer Headless Scraping for Articles/Social Posts
+            const puppeteerText = await scrapeWithPuppeteer(trimmedInput);
             
             if (puppeteerText && puppeteerText.length > 20) {
                 transcript = puppeteerText;
                 console.log("Puppeteer extracted page content successfully.");
             } else {
                 return res.status(400).json({ 
-                    error: 'Facebook/Post requires login or is private. Please copy-paste the text/caption directly!' 
+                    error: 'Unable to extract content automatically. Please copy-paste the text/caption directly!' 
                 });
             }
+        } finally {
+            safeUnlink(tempAudioPath);
         }
     }
 
-    // Groq Fact Checking
+    // Groq Fact Checking Analysis
     try {
         console.log("Analyzing content with Groq...");
         const completion = await groq.chat.completions.create({
             messages: [
                 {
                     role: "system",
-                    content: `You are NoCap.dev, a Gen-Z viral fact-checker. Respond ONLY with valid JSON.
+                    content: `You are markiv.site, a viral fact-checker. Respond ONLY with valid JSON.
                     
 RATING RUBRIC:
 - 9 to 10 (NO CAP): 100% Factually verified, scientifically sound, no missing context.
@@ -180,7 +199,8 @@ app.post('/api/check-video', upload.single('video'), async (req, res) => {
         await extractAudio(videoPath, audioPath);
         const transcript = await transcribeAudio(audioPath);
 
-        if (fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
+        safeUnlink(videoPath);
+        safeUnlink(audioPath);
 
         if (!transcript || transcript.trim().length === 0) {
             return res.status(400).json({ error: 'No speech detected in video.' });
@@ -190,7 +210,7 @@ app.post('/api/check-video', upload.single('video'), async (req, res) => {
             messages: [
                 {
                     role: "system",
-                    content: `You are NoCap.dev, a Gen-Z viral fact-checker. Respond ONLY with valid JSON.
+                    content: `You are markiv.site, a viral fact-checker. Respond ONLY with valid JSON.
 
 RATING RUBRIC:
 - 9 to 10 (NO CAP): 100% Factually verified, scientifically sound, no missing context.
@@ -220,21 +240,20 @@ RATING RUBRIC:
         res.json({ ...jsonResult, transcript });
 
     } catch (err) {
-        if (fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
-        if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
-
+        safeUnlink(videoPath);
+        safeUnlink(audioPath);
+        console.error("VIDEO CHECK ERROR:", err);
         res.status(500).json({ error: err.message || 'Video analysis failed.' });
     }
 });
 
-const PORT = process.env.PORT || 5001;
 // -------------------------------------------------------------
 // 3. AI CHATBOT ASSISTANT ENDPOINT
 // -------------------------------------------------------------
 app.post('/api/chat-assistant', async (req, res) => {
     const { message, mode } = req.body;
     
-    if (!message) {
+    if (!message || typeof message !== 'string') {
         return res.status(400).json({ reply: "Please type a valid message." });
     }
 
@@ -261,9 +280,14 @@ app.post('/api/chat-assistant', async (req, res) => {
         res.status(500).json({ reply: "Sorry, I am having trouble processing your request right now." });
     }
 });
-// Change PORT variable name to avoid duplicate identifier errors
-const PORT_NO = process.env.PORT || 5001;
 
-app.listen(PORT_NO, '0.0.0.0', () => {
-    console.log(`NoCap Server running on port ${PORT_NO}`);
+// Health check endpoint for Cron-Job.org (Prevents Render Sleep Mode)
+app.get('/health', (req, res) => {
+    res.status(200).send('Server is healthy and active');
+});
+
+// Start Server
+const PORT = process.env.PORT || 5001;
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`markiv.site Server running on port ${PORT}`);
 });
