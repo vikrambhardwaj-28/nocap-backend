@@ -1,0 +1,1177 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <!-- PRIMARY SEO META TAGS -->
+    <title>markiv.site — Free AI Fact Checker & Fake News Verifier</title>
+    <meta name="title" content="markiv.site — Free AI Fact Checker & Fake News Verifier">
+    <meta name="description" content="Verify viral claims, Instagram reels, Facebook posts, and news articles instantly with markiv.site. Free AI-powered fact-checking tool using speech recognition and LLMs.">
+    <meta name="keywords" content="fact checker, fake news detection, markiv site, verify reels, instagram fact check, facebook claim verifier, AI truth checker, propaganda checker">
+    <meta name="robots" content="index, follow">
+    <meta name="author" content="markiv.site Technologies">
+    <link rel="canonical" href="https://markiv.site/">
+
+    <!-- OPEN GRAPH / FACEBOOK SOCIAL PREVIEW -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://markiv.site/">
+    <meta property="og:title" content="markiv.site — Expose Propaganda & Verify Viral Claims">
+    <meta property="og:description" content="Instantly check if a social media reel, article, or claim is true or fake news using advanced AI models.">
+    <meta property="og:image" content="https://markiv.site/assets/preview.png">
+
+    <!-- TWITTER CARD PREVIEW -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="https://markiv.site/">
+    <meta property="twitter:title" content="markiv.site — Viral Fact Checker">
+    <meta property="twitter:description" content="Verify viral claims, Instagram reels, and news articles instantly with free AI transcription.">
+    <meta property="twitter:image" content="https://markiv.site/assets/preview.png">
+
+    <!-- SCHEMA MARKUP FOR GOOGLE RICH SNIPPETS (JSON-LD) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "markiv.site",
+      "url": "https://markiv.site/",
+      "description": "A non-profit AI-powered fact-checking platform to verify viral claims, social media links, and videos.",
+      "applicationCategory": "UtilitiesApplication",
+      "operatingSystem": "All",
+      "author": {
+        "@type": "Organization",
+        "name": "markiv.site Technologies",
+        "url": "https://markiv.site"
+      }
+    }
+    </script>
+
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        :root {
+            --bg-color: #050505;
+            --navbar-bg: rgba(5, 5, 5, 0.85);
+            --card-bg: rgba(18, 18, 22, 0.8);
+            --border-color: rgba(255, 255, 255, 0.08);
+            --text-primary: #ffffff;
+            --text-secondary: #a1a1aa;
+            --accent-color: #6366f1;
+            --accent-hover: #4f46e5;
+            --accent-glow: rgba(99, 102, 241, 0.35);
+            --input-bg: rgba(24, 24, 27, 0.8);
+            --footer-bg: #09090b;
+        }
+
+        [data-theme="light"] {
+            --bg-color: #f8fafc;
+            --navbar-bg: rgba(255, 255, 255, 0.9);
+            --card-bg: rgba(255, 255, 255, 0.95);
+            --border-color: rgba(0, 0, 0, 0.12);
+            --text-primary: #0f172a;
+            --text-secondary: #475569;
+            --accent-color: #4f46e5;
+            --accent-hover: #4338ca;
+            --accent-glow: rgba(79, 70, 229, 0.25);
+            --input-bg: #f1f5f9;
+            --footer-bg: #e2e8f0;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            transition: background-color 0.3s, color 0.3s, border-color 0.3s, transform 0.2s, box-shadow 0.3s;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+        }
+
+        .navbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.2rem 2rem;
+            border-bottom: 1px solid var(--border-color);
+            background-color: var(--navbar-bg);
+            backdrop-filter: blur(12px);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .nav-left {
+            display: flex;
+            align-items: center;
+            gap: 1.2rem;
+        }
+
+        .menu-btn {
+            background: none;
+            border: none;
+            color: var(--text-primary);
+            font-size: 1.4rem;
+            cursor: pointer;
+            padding: 0.3rem 0.5rem;
+            border-radius: 8px;
+        }
+
+        .menu-btn:hover {
+            color: var(--accent-color);
+            background: var(--input-bg);
+        }
+
+        .logo {
+            font-size: 1.6rem;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            color: var(--text-primary) !important;
+        }
+
+        .logo .highlight {
+            color: var(--accent-color);
+            text-shadow: 0 0 12px var(--accent-glow);
+        }
+
+        .theme-btn {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 0.5rem 0.9rem;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 1rem;
+        }
+
+        .theme-btn:hover {
+            transform: scale(1.08);
+            box-shadow: 0 0 15px var(--accent-glow);
+        }
+
+        .sidebar-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(4px);
+            z-index: 1500;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+
+        .sidebar-overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: -300px;
+            width: 280px;
+            height: 100vh;
+            background: var(--card-bg);
+            border-right: 1px solid var(--border-color);
+            z-index: 1600;
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            backdrop-filter: blur(20px);
+            transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 5px 0 25px rgba(0,0,0,0.5);
+        }
+
+        .sidebar.active {
+            left: 0;
+        }
+
+        .sidebar-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .close-sidebar-btn {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 1.4rem;
+            cursor: pointer;
+        }
+
+        .close-sidebar-btn:hover {
+            color: var(--text-primary);
+        }
+
+        .sidebar-links {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .sidebar-links li a {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+            color: var(--text-primary);
+            text-decoration: none;
+            font-size: 1rem;
+            font-weight: 500;
+            padding: 0.7rem 1rem;
+            border-radius: 10px;
+        }
+
+        .sidebar-links li a:hover, .sidebar-links li a.active {
+            background: var(--input-bg);
+            color: var(--accent-color);
+            border-left: 3px solid var(--accent-color);
+        }
+
+        .sidebar-links li a span.badge-new {
+            background: var(--accent-color);
+            color: white;
+            font-size: 0.65rem;
+            padding: 0.2rem 0.5rem;
+            border-radius: 12px;
+            margin-left: auto;
+            text-transform: uppercase;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 2.5rem auto;
+            padding: 0 1rem;
+            width: 100%;
+        }
+
+        .hero {
+            text-align: center;
+            margin-bottom: 2.5rem;
+        }
+
+        .hero h1 {
+            font-size: 2.8rem;
+            font-weight: 900;
+            line-height: 1.2;
+            letter-spacing: -1px;
+        }
+
+        .gradient-text {
+            background: linear-gradient(90deg, #818cf8, #c084fc, #e879f9, #818cf8);
+            background-size: 300% 300%;
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: gradientShift 6s ease infinite;
+        }
+
+        @keyframes gradientShift {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        .hero p {
+            color: var(--text-secondary);
+            margin-top: 0.8rem;
+            font-size: 1.05rem;
+        }
+
+        .tab-container {
+            display: flex;
+            gap: 0.6rem;
+            margin-bottom: 1.2rem;
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 0.9rem;
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 600;
+            backdrop-filter: blur(8px);
+        }
+
+        .tab-btn:hover {
+            border-color: var(--accent-color);
+            color: var(--text-primary);
+        }
+
+        .tab-btn.active {
+            background: linear-gradient(135deg, var(--accent-color), var(--accent-hover));
+            color: #fff;
+            border-color: transparent;
+            box-shadow: 0 4px 20px var(--accent-glow);
+        }
+
+        .card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 1.8rem;
+            margin-bottom: 1.8rem;
+            backdrop-filter: blur(16px);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+        }
+
+        .card:hover {
+            border-color: rgba(99, 102, 241, 0.4);
+            box-shadow: 0 12px 35px var(--accent-glow);
+        }
+
+        textarea, input[type="text"] {
+            width: 100%;
+            padding: 1.1rem;
+            background: var(--input-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            border-radius: 10px;
+            font-size: 1rem;
+            outline: none;
+            margin-bottom: 1.2rem;
+        }
+
+        textarea:focus, input[type="text"]:focus {
+            border-color: var(--accent-color);
+            box-shadow: 0 0 12px var(--accent-glow);
+        }
+
+        textarea {
+            min-height: 125px;
+            resize: vertical;
+        }
+
+        .submit-btn {
+            width: 100%;
+            padding: 1rem;
+            background: linear-gradient(135deg, var(--accent-color), var(--accent-hover));
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.05rem;
+            font-weight: 700;
+            cursor: pointer;
+            box-shadow: 0 4px 15px var(--accent-glow);
+        }
+
+        .submit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 25px var(--accent-glow);
+        }
+
+        .file-dropzone {
+            border: 2px dashed var(--border-color);
+            padding: 2.8rem;
+            text-align: center;
+            border-radius: 12px;
+            cursor: pointer;
+            margin-bottom: 1.2rem;
+            background: var(--input-bg);
+        }
+
+        .file-dropzone:hover {
+            border-color: var(--accent-color);
+            background: rgba(99, 102, 241, 0.05);
+        }
+
+        .file-dropzone i {
+            font-size: 2.2rem;
+            color: var(--accent-color);
+            margin-bottom: 0.6rem;
+            animation: floatIcon 3s ease-in-out infinite;
+        }
+
+        @keyframes floatIcon {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-6px); }
+        }
+
+        .result-card {
+            animation: fadeInScale 0.4s ease-out;
+        }
+
+        @keyframes fadeInScale {
+            from { opacity: 0; transform: scale(0.96) translateY(10px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+
+        .result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 1.2rem;
+            margin-bottom: 1.2rem;
+        }
+
+        .score {
+            font-size: 2.8rem;
+            font-weight: 900;
+            background: linear-gradient(135deg, #10b981, #6366f1);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .badge {
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 800;
+            background: var(--input-bg);
+            border: 1px solid var(--accent-color);
+            color: var(--accent-color);
+            box-shadow: 0 0 15px var(--accent-glow);
+            animation: pulseGlow 2s infinite;
+        }
+
+        @keyframes pulseGlow {
+            0%, 100% { box-shadow: 0 0 8px var(--accent-glow); }
+            50% { box-shadow: 0 0 20px var(--accent-glow); }
+        }
+
+        .result-body h3 {
+            font-size: 1.05rem;
+            margin-top: 1.2rem;
+            margin-bottom: 0.5rem;
+            color: #818cf8;
+        }
+
+        .tldr-box {
+            background: var(--input-bg);
+            padding: 1.2rem;
+            border-radius: 10px;
+            margin-top: 1.2rem;
+            border-left: 4px solid var(--accent-color);
+        }
+
+        .hidden { display: none !important; }
+
+        .disclaimer-wrapper {
+            max-width: 800px;
+            margin: 1rem auto 3rem;
+            padding: 0 1rem;
+        }
+
+        .disclaimer-box {
+            display: flex;
+            gap: 1rem;
+            align-items: flex-start;
+            padding: 1.1rem;
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .disclaimer-box i {
+            font-size: 1.3rem;
+            color: #f59e0b;
+        }
+
+        .footer {
+            margin-top: auto;
+            background-color: var(--footer-bg);
+            border-top: 1px solid var(--border-color);
+            padding: 3.5rem 2rem 1.8rem;
+            font-size: 0.88rem;
+            color: var(--text-secondary);
+        }
+
+        .footer-grid {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 2rem;
+            padding-bottom: 2rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .footer-col h4 {
+            color: #888;
+            font-size: 0.78rem;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin-bottom: 0.9rem;
+        }
+
+        .footer-col ul { list-style: none; }
+        .footer-col ul li { margin-bottom: 0.6rem; }
+
+        .footer-col ul li a {
+            color: var(--text-primary);
+            text-decoration: none;
+            font-weight: 500;
+            cursor: pointer;
+        }
+
+        .footer-col ul li a:hover {
+            color: var(--accent-color);
+            padding-left: 4px;
+        }
+
+        .footer-col p {
+            color: var(--text-primary);
+            line-height: 1.6;
+            margin-bottom: 0.4rem;
+        }
+
+        .footer-col.bordered {
+            border-left: 1px solid var(--border-color);
+            padding-left: 1.5rem;
+        }
+
+        @media (max-width: 768px) {
+            .footer-col.bordered { border-left: none; padding-left: 0; }
+        }
+
+        .footer-bottom {
+            max-width: 1200px;
+            margin: 1.8rem auto 0;
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 0.82rem;
+        }
+
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(6px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .modal-window {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            width: 90%;
+            max-width: 520px;
+            border-radius: 16px;
+            padding: 1.8rem;
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(20px);
+            animation: slideUp 0.3s ease;
+        }
+
+        @keyframes slideUp {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.9rem;
+            margin-bottom: 1.1rem;
+        }
+
+        .modal-header h3 {
+            font-size: 1.3rem;
+            color: var(--text-primary);
+        }
+
+        .modal-close-btn {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 1.5rem;
+            cursor: pointer;
+        }
+
+        .modal-close-btn:hover { color: var(--text-primary); }
+
+        .modal-body {
+            font-size: 0.98rem;
+            line-height: 1.6;
+            color: var(--text-secondary);
+        }
+
+        .modal-body p { margin-bottom: 0.8rem; }
+        .modal-body strong { color: var(--text-primary); }
+        .modal-body a { color: var(--accent-color); text-decoration: none; }
+
+        .chat-widget {
+            position: fixed;
+            bottom: 25px;
+            right: 25px;
+            z-index: 1000;
+        }
+
+        .chat-toggle-btn {
+            width: 55px;
+            height: 55px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--accent-color), var(--accent-hover));
+            color: white;
+            border: none;
+            font-size: 1.4rem;
+            cursor: pointer;
+            box-shadow: 0 6px 20px var(--accent-glow);
+        }
+
+        .chat-toggle-btn:hover {
+            transform: scale(1.1);
+        }
+
+        .chat-box {
+            position: absolute;
+            bottom: 70px;
+            right: 0;
+            width: 330px;
+            height: 440px;
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 12px 30px rgba(0,0,0,0.5);
+            backdrop-filter: blur(20px);
+            overflow: hidden;
+            animation: slideUp 0.3s ease;
+        }
+
+        .chat-header {
+            background: var(--input-bg);
+            padding: 0.9rem;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.88rem;
+        }
+
+        .chat-title {
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .close-chat {
+            background: none;
+            border: none;
+            color: var(--text-primary);
+            font-size: 1.3rem;
+            cursor: pointer;
+        }
+
+        .chat-messages {
+            flex: 1;
+            padding: 0.9rem;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 0.7rem;
+            font-size: 0.88rem;
+        }
+
+        .msg {
+            padding: 0.7rem 0.9rem;
+            border-radius: 10px;
+            max-width: 85%;
+        }
+
+        .msg.bot {
+            background: var(--input-bg);
+            align-self: flex-start;
+            border: 1px solid var(--border-color);
+        }
+
+        .msg.user {
+            background: var(--accent-color);
+            color: white;
+            align-self: flex-end;
+            box-shadow: 0 2px 10px var(--accent-glow);
+        }
+
+        .chat-input-area {
+            display: flex;
+            padding: 0.6rem;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .chat-input-area input {
+            margin-bottom: 0;
+            border-radius: 8px 0 0 8px;
+        }
+
+        .chat-input-area button {
+            padding: 0 1rem;
+            background: var(--accent-color);
+            border: none;
+            color: white;
+            border-radius: 0 8px 8px 0;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- NAVBAR WITH HAMBURGER MENU -->
+    <header class="navbar">
+        <div class="nav-left">
+            <button class="menu-btn" onclick="toggleSidebar()" aria-label="Open Navigation Menu">
+                <i class="fa-solid fa-bars"></i>
+            </button>
+            <a href="/" class="logo" style="text-decoration:none;">
+                <span>markiv</span><span class="highlight">.site</span>
+            </a>
+        </div>
+        <button id="themeToggleBtn" class="theme-btn" onclick="toggleTheme()" aria-label="Toggle Theme">
+            <i class="fa-solid fa-moon"></i>
+        </button>
+    </header>
+
+    <!-- SIDEBAR DRAWER MENU -->
+    <div id="sidebarOverlay" class="sidebar-overlay" onclick="toggleSidebar()"></div>
+    <aside id="sidebar" class="sidebar">
+        <div class="sidebar-header">
+            <a href="/" class="logo" style="text-decoration:none;">
+                <span>markiv</span><span class="highlight">.site</span>
+            </a>
+            <button class="close-sidebar-btn" onclick="toggleSidebar()">&times;</button>
+        </div>
+        <ul class="sidebar-links">
+            <li><a href="/" class="active"><i class="fa-solid fa-bolt"></i> Viral Fact Checker</a></li>
+            
+            <!-- File Sharing Site Link -->
+            <li>
+                <a href="https://markiv.site" target="_blank" rel="noopener">
+                    <i class="fa-solid fa-share-nodes"></i> File Sharing Platform
+                    <span class="badge-new">NEW</span>
+                </a>
+            </li>
+
+            <li><a onclick="openModal('guide'); toggleSidebar();"><i class="fa-solid fa-circle-info"></i> How It Works</a></li>
+            <li><a onclick="openModal('api'); toggleSidebar();"><i class="fa-solid fa-code"></i> Developer API <span class="badge-new">v1.0</span></a></li>
+            <li><a onclick="openModal('about'); toggleSidebar();"><i class="fa-solid fa-bullseye"></i> Our Mission</a></li>
+            <li><a onclick="openModal('contact'); toggleSidebar();"><i class="fa-solid fa-envelope"></i> Support & Contact</a></li>
+        </ul>
+    </aside>
+
+    <!-- MAIN FACT-CHECKER SECTION -->
+    <main class="container" id="fact-check">
+        <section class="hero">
+            <h1>Expose the Cap. <br><span class="gradient-text">Verify Viral Claims in Seconds.</span></h1>
+            <p>Paste text, social media links, or upload video files to analyze truthfulness using LLMs and AI audio transcription.</p>
+        </section>
+
+        <!-- TAB SWITCHER -->
+        <div class="tab-container">
+            <button class="tab-btn active" onclick="switchTab('text')"><i class="fa-solid fa-link"></i> Text / Claim / Link</button>
+            <button class="tab-btn" onclick="switchTab('video')"><i class="fa-solid fa-file-video"></i> Video Upload</button>
+        </div>
+
+        <!-- INPUT SECTION -->
+        <div class="card input-card">
+            <div id="textInputGroup">
+                <textarea id="inputText" placeholder="Paste a claim, news article text, or social link (Instagram, Facebook, Shorts)..." aria-label="Claim Text or URL Input"></textarea>
+                <button class="submit-btn" onclick="analyzeText()"><i class="fa-solid fa-bolt"></i> Check Truth</button>
+            </div>
+
+            <div id="videoInputGroup" class="hidden">
+                <div class="file-dropzone" onclick="document.getElementById('videoFile').click()">
+                    <i class="fa-solid fa-cloud-arrow-up"></i>
+                    <p id="fileName">Click to select MP4 video file</p>
+                    <input type="file" id="videoFile" accept="video/mp4,video/*" hidden onchange="updateFileName()">
+                </div>
+                <button class="submit-btn" onclick="analyzeVideo()"><i class="fa-solid fa-wand-magic-sparkles"></i> Process Video</button>
+            </div>
+        </div>
+
+        <!-- RESULT SECTION -->
+        <article id="resultCard" class="card result-card hidden">
+            <div class="result-header">
+                <div>
+                    <span class="label">CREDIBILITY RATING</span>
+                    <div id="ratingScore" class="score">0/10</div>
+                </div>
+                <div id="verdictBadge" class="badge">ANALYZING</div>
+            </div>
+
+            <div class="result-body">
+                <h3><i class="fa-solid fa-magnifying-glass"></i> Fact Check</h3>
+                <p id="factCheckText">...</p>
+
+                <h3><i class="fa-solid fa-triangle-exclamation"></i> The Catch</h3>
+                <p id="theCatchText">...</p>
+
+                <div class="tldr-box">
+                    <strong>TL;DR:</strong>
+                    <p id="tldrText">...</p>
+                </div>
+            </div>
+        </article>
+    </main>
+
+    <!-- PROFESSIONAL DISCLAIMER -->
+    <div class="disclaimer-wrapper">
+        <aside class="disclaimer-box">
+            <i class="fa-solid fa-shield-halved"></i>
+            <p><strong>Disclaimer:</strong> markiv.site uses automated artificial intelligence models and speech recognition to evaluate content credibility. While we aim for high accuracy, AI-generated analyses may occasionally contain errors, oversights, or context gaps. Results should be treated as informational indicators rather than absolute legal or medical truths. Independent verification is encouraged.</p>
+        </aside>
+    </div>
+
+    <!-- FLIPKART-STYLE FOOTER -->
+    <footer class="footer">
+        <div class="footer-grid">
+            <div class="footer-col">
+                <h4>ABOUT</h4>
+                <ul>
+                    <li><a onclick="openModal('contact')">Contact Us</a></li>
+                    <li><a onclick="openModal('about')">About markiv.site</a></li>
+                    <li><a onclick="openModal('careers')">Careers</a></li>
+                </ul>
+            </div>
+
+            <div class="footer-col">
+                <h4>HELP</h4>
+                <ul>
+                    <li><a onclick="openModal('api')">API Integration</a></li>
+                    <li><a onclick="openModal('guide')">Verification Guide</a></li>
+                    <li><a onclick="openModal('faq')">FAQ</a></li>
+                </ul>
+            </div>
+
+            <div class="footer-col">
+                <h4>CONSUMER POLICY</h4>
+                <ul>
+                    <li><a onclick="openModal('terms')">Terms Of Use</a></li>
+                    <li><a onclick="openModal('privacy')">Privacy Policy</a></li>
+                    <li><a onclick="openModal('sitemap')">Sitemap</a></li>
+                    <li><a onclick="openModal('grievance')">Grievance Redressal</a></li>
+                </ul>
+            </div>
+
+            <div class="footer-col">
+                <h4>SOCIAL</h4>
+                <ul>
+                    <li><a href="https://www.facebook.com/share/196jZuggxg/" target="_blank" rel="noopener">Facebook</a></li>
+                    <li><a href="https://www.instagram.com/vikrm_bhardwaj?igsh=OWh4ZHprbW5rNTZv" target="_blank" rel="noopener">Instagram</a></li>
+                    <li><a href="https://www.youtube.com/@Vikram-b9r" target="_blank" rel="noopener">YouTube</a></li>
+                </ul>
+            </div>
+
+            <div class="footer-col bordered">
+                <h4>Mail Us:</h4>
+                <p><strong>Personal:</strong> vikram.2872006@gmail.com</p>
+                <p><strong>Institutional:</strong> vikram_cse_2024@rkgitm.ac.in</p>
+            </div>
+
+            <div class="footer-col">
+                <h4>Registered Office Address:</h4>
+                <p>markiv.site Technologies,</p>
+                <p>C-13/1 Umesh Park,</p>
+                <p>Modinagar, Ghaziabad (UP),</p>
+                <p>India</p>
+            </div>
+        </div>
+
+        <div class="footer-bottom">
+            <p>&copy; 2026 markiv.site. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <!-- MODAL WINDOW CONTAINER -->
+    <div id="modalOverlay" class="modal-overlay hidden" onclick="closeModalOnOutsideClick(event)">
+        <div class="modal-window">
+            <div class="modal-header">
+                <h3 id="modalTitle">Modal Title</h3>
+                <button class="modal-close-btn" onclick="closeModal()">&times;</button>
+            </div>
+            <div id="modalBody" class="modal-body">
+                <!-- Content injected dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <!-- FLOATING AI ASSISTANT WIDGET -->
+    <div class="chat-widget">
+        <button class="chat-toggle-btn" onclick="toggleChat()" aria-label="Open AI Assistant"><i class="fa-solid fa-headset"></i></button>
+
+        <div id="chatBox" class="chat-box hidden">
+            <div class="chat-header">
+                <div class="chat-title">
+                    <i class="fa-solid fa-robot"></i>
+                    <span>markiv.site AI Assistant</span>
+                </div>
+                <div class="chat-mode-toggle">
+                    <label><input type="checkbox" id="aiModeToggle"> General AI Mode</label>
+                </div>
+                <button class="close-chat" onclick="toggleChat()">&times;</button>
+            </div>
+            <div id="chatMessages" class="chat-messages">
+                <div class="msg bot">Hello! I am your markiv.site Assistant. Ask me anything about how to use this platform or switch to General AI Mode for any query.</div>
+            </div>
+            <div class="chat-input-area">
+                <input type="text" id="chatInput" placeholder="Ask a question..." onkeypress="handleChatKeyPress(event)">
+                <button onclick="sendChatMessage()"><i class="fa-solid fa-paper-plane"></i></button>
+            </div>
+        </div>
+    </div>
+
+    <!-- JAVASCRIPT LOGIC -->
+    <script>
+        function toggleSidebar() {
+            document.getElementById('sidebar').classList.toggle('active');
+            document.getElementById('sidebarOverlay').classList.toggle('active');
+        }
+
+        const modalData = {
+            contact: {
+                title: "Contact Us",
+                content: `
+                    <p>Get in touch with our team for inquiries, feedback, or technical support:</p>
+                    <p><strong>Phone:</strong> <a href="tel:+917309929051">+91-7309929051</a></p>
+                    <p><strong>Personal Email:</strong> <a href="mailto:vikram.2872006@gmail.com">vikram.2872006@gmail.com</a></p>
+                    <p><strong>Institutional Email:</strong> <a href="mailto:vikram_cse_2024@rkgitm.ac.in">vikram_cse_2024@rkgitm.ac.in</a></p>
+                    <p><strong>Office Address:</strong> C-13/1 Umesh Park, Modinagar, Ghaziabad (UP), India</p>
+                `
+            },
+            about: {
+                title: "About markiv.site",
+                content: `
+                    <p><strong>markiv.site</strong> is an open non-profit initiative engineered to curb online propaganda, fake news, and misleading claims across major digital platforms including Instagram, Facebook, and YouTube.</p>
+                    <p>By leveraging state-of-the-art Large Language Models (LLMs) and advanced speech recognition technology, we provide automated, objective, and evidence-based fact checks to empower users with transparent truth.</p>
+                `
+            },
+            careers: {
+                title: "Careers & Open Roles",
+                content: `
+                    <p>We are currently operating as an open-source non-profit project. While we don't have open paid positions right now, we welcome contributors, AI researchers, and developers to join our initiative!</p>
+                    <p>Interested in collaborating? Reach out to us at <strong>vikram.2872006@gmail.com</strong>.</p>
+                `
+            },
+            api: {
+                title: "Developer API Integration",
+                content: `
+                    <p>Want to integrate <strong>markiv.site</strong> fact-checking services directly into your applications, web scrapers, or social bots?</p>
+                    <p>We provide a streamlined RESTful API endpoint (<code>/api/check-text</code>) returning structured JSON verification scores and analytical breakdowns. Contact our developer team for access keys.</p>
+                `
+            },
+            guide: {
+                title: "Verification Guide",
+                content: `
+                    <p><strong>How to verify claims on markiv.site:</strong></p>
+                    <p>1. <strong>Text / Link Input:</strong> Paste any textual statement, news article link, or social media post URL (Reels, Shorts, Facebook).</p>
+                    <p>2. <strong>Video Upload:</strong> Direct-upload MP4 files to process audio via Whisper AI speech-to-text models.</p>
+                    <p>3. <strong>Understanding Scores:</strong> Scores from 9-10 represent Verified Truth, 5-8 indicate Exaggerated/Partial Truth, and 1-4 denote Debunked Misinformation.</p>
+                `
+            },
+            faq: {
+                title: "Frequently Asked Questions",
+                content: `
+                    <p><strong>Q: Is markiv.site free to use?</strong><br>Yes, the service is 100% free and dedicated to public benefit.</p>
+                    <p><strong>Q: How accurate are the AI fact checks?</strong><br>We utilize multi-agent LLM analysis and real-time page extraction. However, users should cross-verify critical legal, medical, or political decisions with official sources.</p>
+                `
+            },
+            terms: {
+                title: "Terms Of Use",
+                content: `
+                    <p>By accessing <strong>markiv.site</strong>, you agree to utilize our AI fact-checking tools responsibly. Users are prohibited from attempting automated denial-of-service, spamming queries, or scraping server endpoints without prior authorization.</p>
+                `
+            },
+            privacy: {
+                title: "Privacy & Data Policy",
+                content: `
+                    <p>Your privacy is paramount. Submitted URLs, text, and audio files are processed in real-time solely to compute truth ratings and analytical summaries. We do not store, monetize, or disclose user queries to external third parties.</p>
+                `
+            },
+            sitemap: {
+                title: "System Sitemap",
+                content: `
+                    <p>• Home / Core Fact Checker Interface</p>
+                    <p>• Video Audio Extraction & Analysis Pipeline</p>
+                    <p>• AI Help Assistant Floating Widget</p>
+                    <p>• Contact, API & Legal Policy Documentation</p>
+                `
+            },
+            grievance: {
+                title: "Grievance Redressal Mechanism",
+                content: `
+                    <p>If you identify an inaccurate fact-check output or wish to appeal a credibility verdict, please notify our designated Grievance Officer at <strong>vikram.2872006@gmail.com</strong> with the relevant claim details and evidence for prompt review.</p>
+                `
+            }
+        };
+
+        function openModal(key) {
+            const data = modalData[key];
+            if (!data) return;
+
+            document.getElementById('modalTitle').innerText = data.title;
+            document.getElementById('modalBody').innerHTML = data.content;
+            document.getElementById('modalOverlay').classList.remove('hidden');
+        }
+
+        function closeModal() {
+            document.getElementById('modalOverlay').classList.add('hidden');
+        }
+
+        function closeModalOnOutsideClick(e) {
+            if (e.target.id === 'modalOverlay') {
+                closeModal();
+            }
+        }
+
+        function toggleTheme() {
+            const html = document.documentElement;
+            const currentTheme = html.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            html.setAttribute('data-theme', newTheme);
+
+            const icon = document.querySelector('#themeToggleBtn i');
+            icon.className = newTheme === 'dark' ? 'fa-solid fa-moon' : 'fa-solid fa-sun';
+        }
+
+        function switchTab(tab) {
+            const textGroup = document.getElementById('textInputGroup');
+            const videoGroup = document.getElementById('videoInputGroup');
+            const btns = document.querySelectorAll('.tab-btn');
+
+            if (tab === 'text') {
+                textGroup.classList.remove('hidden');
+                videoGroup.classList.add('hidden');
+                btns[0].classList.add('active');
+                btns[1].classList.remove('active');
+            } else {
+                textGroup.classList.add('hidden');
+                videoGroup.classList.remove('hidden');
+                btns[0].classList.remove('active');
+                btns[1].classList.add('active');
+            }
+        }
+
+        function updateFileName() {
+            const file = document.getElementById('videoFile').files[0];
+            if (file) {
+                document.getElementById('fileName').innerText = `Selected: ${file.name}`;
+            }
+        }
+
+        async function analyzeText() {
+            const text = document.getElementById('inputText').value;
+            if (!text) return alert("Please enter text or link!");
+
+            showLoading();
+            try {
+                const res = await fetch('/api/check-text', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text })
+                });
+                const data = await res.json();
+                renderResult(data);
+            } catch (err) {
+                alert("Error analyzing text/link.");
+            }
+        }
+
+        async function analyzeVideo() {
+            const fileInput = document.getElementById('videoFile');
+            if (!fileInput.files[0]) return alert("Please select a video file!");
+
+            const formData = new FormData();
+            formData.append('video', fileInput.files[0]);
+
+            showLoading();
+            try {
+                const res = await fetch('/api/check-video', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await res.json();
+                renderResult(data);
+            } catch (err) {
+                alert("Error analyzing video file.");
+            }
+        }
+
+        function showLoading() {
+            const resultCard = document.getElementById('resultCard');
+            resultCard.classList.remove('hidden');
+            document.getElementById('ratingScore').innerText = "...";
+            document.getElementById('verdictBadge').innerText = "PROCESSING";
+            document.getElementById('factCheckText').innerText = "Analyzing content, please wait...";
+        }
+
+        function renderResult(data) {
+            if (data.error) {
+                alert(data.error);
+                return;
+            }
+            document.getElementById('ratingScore').innerText = `${data.rating}/10`;
+            document.getElementById('verdictBadge').innerText = data.verdict;
+            document.getElementById('factCheckText').innerText = data.factCheck;
+            document.getElementById('theCatchText').innerText = data.theCatch;
+            document.getElementById('tldrText').innerText = data.tldr;
+        }
+
+        function toggleChat() {
+            document.getElementById('chatBox').classList.toggle('hidden');
+        }
+
+        function handleChatKeyPress(e) {
+            if (e.key === 'Enter') sendChatMessage();
+        }
+
+        async function sendChatMessage() {
+            const input = document.getElementById('chatInput');
+            const msg = input.value.trim();
+            if (!msg) return;
+
+            const chatMessages = document.getElementById('chatMessages');
+            chatMessages.innerHTML += `<div class="msg user">${msg}</div>`;
+            input.value = '';
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+
+            const isGeneralAi = document.getElementById('aiModeToggle').checked;
+
+            try {
+                const response = await fetch('/api/chat-assistant', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: msg, mode: isGeneralAi ? 'general' : 'site_help' })
+                });
+                const data = await response.json();
+                chatMessages.innerHTML += `<div class="msg bot">${data.reply}</div>`;
+            } catch (e) {
+                chatMessages.innerHTML += `<div class="msg bot">Sorry, unable to connect to assistant.</div>`;
+            }
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+    </script>
+</body>
+</html>
