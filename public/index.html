@@ -977,7 +977,8 @@
 
     <!-- JAVASCRIPT LOGIC -->
     <script>
-        const API_BASE_URL = 'https://nocap-backend-n3pr.onrender.com';
+        // Update this URL to match your Cloudflare Tunnel URL
+        const API_BASE_URL = 'https://cool-agents-heights-ocean.trycloudflare.com';
 
         function toggleSidebar() {
             document.getElementById('sidebar').classList.toggle('active');
@@ -1151,7 +1152,7 @@
                 const data = await res.json();
 
                 if (!res.ok || data.error) {
-                    hideLoading(); // Error aane par result card band kar do
+                    hideLoading(); // Error aane par result card hide kar do
                     alert(data.error || "Unable to analyze claim.");
                     return;
                 }
@@ -1159,7 +1160,7 @@
                 renderResult(data);
             } catch (err) {
                 hideLoading();
-                alert("Error connecting to server. Please try again.");
+                alert("Error connecting to local server. Please check if node server.js is running.");
             }
         }
 
@@ -1188,7 +1189,7 @@
                 renderResult(data);
             } catch (err) {
                 hideLoading();
-                alert("Error connecting to server while processing video.");
+                alert("Error connecting to local server while processing video.");
             }
         }
 
@@ -1235,4 +1236,4 @@
         }
     </script>
 </body>
-</html>
+</html> ye mera update index . html ha or ye file render pr ha to render pr commit ki jarurat to hogi na to terminal ke liye uski commond doge kase commit kru render pe ise update ke bad
