@@ -18,7 +18,7 @@ app.use(express.json());
 app.use(cors());
 app.use(express.static('public'));
 
-// Ensure uploads directory exists
+// Uploads dir check
 if (!fs.existsSync('uploads')) {
     fs.mkdirSync('uploads');
 }
@@ -34,7 +34,18 @@ const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 // HELPER FUNCTIONS
 // -------------------------------------------------------------
 
-// 1. Secure Audio Extraction via yt-dlp (Using execFile)
+// Helper to safely cleanup files
+function safeUnlink(filePath) {
+    if (filePath && fs.existsSync(filePath)) {
+        try {
+            fs.unlinkSync(filePath);
+        } catch (e) {
+            console.error(`Failed to delete temp file ${filePath}:`, e.message);
+        }
+    }
+}
+
+// Download Audio using yt-dlp
 function downloadAudioFromUrl(url, outputAudioPath) {
     return new Promise((resolve, reject) => {
         const args = ['-x', '--audio-format', 'mp3', '-o', outputAudioPath, url];
@@ -45,54 +56,53 @@ function downloadAudioFromUrl(url, outputAudioPath) {
     });
 }
 
-// 2. Optimized Scraper (Axios Fast Extraction with Puppeteer Fallback)
-async function scrapeWithPuppeteer(url) {
-    // Attempt 1: Fast Meta Tag Extraction via Axios + Cheerio
+// Multi-stage Content Extractor for Social Links & Webpages
+async function extractContentFromUrl(url) {
+    console.log("Extracting content for URL:", url);
+
+    // Stage 1: Axios Fast Metadata Scrape
     try {
-        console.log("Attempting fast HTML meta scraping via Axios...");
+        console.log("Stage 1: Axios OpenGraph Scrape...");
         const response = await axios.get(url, {
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept-Language': 'en-US,en;q=0.9'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
             },
-            timeout: 8000
+            timeout: 7000
         });
 
         const $ = cheerio.load(response.data);
         const ogTitle = $('meta[property="og:title"]').attr('content') || $('title').text() || '';
         const ogDesc = $('meta[property="og:description"]').attr('content') || $('meta[name="description"]').attr('content') || '';
+        const bodyText = $('p').text().slice(0, 1500) || '';
 
-        const metaContent = `${ogTitle}\n${ogDesc}`.trim();
-        if (metaContent.length > 20) {
-            console.log("Axios successfully extracted metadata.");
-            return metaContent;
+        const combinedText = `${ogTitle}\n${ogDesc}\n${bodyText}`.trim();
+        if (combinedText.length > 30) {
+            console.log("Stage 1 Success! Text extracted.");
+            return combinedText;
         }
-    } catch (axiosErr) {
-        console.log("Axios meta extraction failed/blocked, falling back to Puppeteer...");
+    } catch (e) {
+        console.log("Stage 1 Failed (Axios blocked/timeout):", e.message);
     }
 
-    // Attempt 2: Puppeteer Headless Browser
+    // Stage 2: Puppeteer Headless Backup
     let browser = null;
     try {
-        console.log("Launching Headless Browser...");
+        console.log("Stage 2: Puppeteer Browser Launch...");
         browser = await puppeteer.launch({ 
             headless: 'new',
             args: [
                 '--no-sandbox', 
                 '--disable-setuid-sandbox',
                 '--disable-dev-shm-usage',
-                '--disable-accelerated-2d-canvas',
-                '--no-first-run',
-                '--no-zygote',
-                '--single-process',
-                '--disable-gpu'
+                '--disable-gpu',
+                '--single-process'
             ]
         });
         const page = await browser.newPage();
+        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
         
-        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-        
-        // Block heavy resources (images, css, fonts) to save RAM on Render
         await page.setRequestInterception(true);
         page.on('request', (req) => {
             if (['image', 'stylesheet', 'font', 'media'].includes(req.resourceType())) {
@@ -102,36 +112,27 @@ async function scrapeWithPuppeteer(url) {
             }
         });
 
-        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
-        await new Promise(r => setTimeout(r, 1500));
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 12000 });
+        await new Promise(r => setTimeout(r, 1000));
 
         const extractedText = await page.evaluate(() => {
             const ogTitle = document.querySelector('meta[property="og:title"]')?.content || '';
             const ogDesc = document.querySelector('meta[property="og:description"]')?.content || '';
-            const metaDesc = document.querySelector('meta[name="description"]')?.content || '';
-            const bodyText = document.body.innerText || '';
-
-            return `${ogTitle}\n${ogDesc}\n${metaDesc}\n${bodyText}`.slice(0, 3000);
+            const body = document.body?.innerText || '';
+            return `${ogTitle}\n${ogDesc}\n${body}`.slice(0, 2500);
         });
 
         await browser.close();
-        return extractedText.trim();
-    } catch (err) {
-        console.error("Puppeteer Scraping Error:", err.message);
-        if (browser) await browser.close();
-        return null;
-    }
-}
-
-// Helper to safely cleanup temp files
-function safeUnlink(filePath) {
-    if (filePath && fs.existsSync(filePath)) {
-        try {
-            fs.unlinkSync(filePath);
-        } catch (e) {
-            console.error(`Failed to delete temp file ${filePath}:`, e.message);
+        if (extractedText.trim().length > 30) {
+            console.log("Stage 2 Success via Puppeteer.");
+            return extractedText.trim();
         }
+    } catch (err) {
+        console.error("Stage 2 Puppeteer Error:", err.message);
+        if (browser) await browser.close();
     }
+
+    return null;
 }
 
 // -------------------------------------------------------------
@@ -149,29 +150,27 @@ app.post('/api/check-text', async (req, res) => {
     let tempAudioPath = null;
 
     if (isUrl) {
-        console.log("Processing URL input:", trimmedInput);
         const audioFilename = `link_${Date.now()}.mp3`;
         tempAudioPath = path.join('uploads', audioFilename);
 
-        // Attempt 1: Video/Reel Audio Extraction (yt-dlp)
+        // Attempt A: Video reel audio download
         try {
-            console.log("Attempt 1: Trying yt-dlp audio download...");
+            console.log("Attempt A: Video Audio extraction...");
             await downloadAudioFromUrl(trimmedInput, tempAudioPath);
             transcript = await transcribeAudio(tempAudioPath);
-            console.log("Audio transcript received from yt-dlp.");
+            console.log("Audio transcribed successfully.");
         } catch (videoErr) {
-            console.log("Attempt 1 failed (Not a video/download error). Trying Scraper (Axios / Puppeteer)...");
+            console.log("Not a video or yt-dlp failed. Trying Web Scraping...");
             safeUnlink(tempAudioPath);
 
-            // Attempt 2: Scraping for Facebook/Articles
-            const pageText = await scrapeWithPuppeteer(trimmedInput);
+            // Attempt B: Extract text metadata from URL
+            const extractedPageText = await extractContentFromUrl(trimmedInput);
             
-            if (pageText && pageText.length > 20) {
-                transcript = pageText;
-                console.log("Extracted page content successfully.");
+            if (extractedPageText && extractedPageText.length > 25) {
+                transcript = extractedPageText;
             } else {
                 return res.status(400).json({ 
-                    error: 'Unable to extract content automatically. Please copy-paste the text/caption directly!' 
+                    error: 'Facebook/Instagram is blocking automated access from cloud server. Please copy-paste the text/caption directly into the box!' 
                 });
             }
         } finally {
@@ -179,31 +178,31 @@ app.post('/api/check-text', async (req, res) => {
         }
     }
 
-    // Groq Fact Checking Analysis
+    // Groq Fact Checking
     try {
-        console.log("Analyzing content with Groq...");
+        console.log("Analyzing claim with Groq LLM...");
         const completion = await groq.chat.completions.create({
             messages: [
                 {
                     role: "system",
-                    content: `You are markiv.site, a viral fact-checker. Respond ONLY with valid JSON.
+                    content: `You are markiv.site, an elite fact-checker. Respond ONLY with valid JSON.
                     
 RATING RUBRIC:
-- 9 to 10 (NO CAP): 100% Factually verified, scientifically sound, no missing context.
-- 5 to 8 (PARTIAL CAP): Mixed truth, clickbait exaggeration, or crucial context omitted.
-- 1 to 4 (TOTAL CAP): Debunked myth, fake news, blatantly false or dangerous misinfo.`
+- 9 to 10 (NO CAP): 100% Factually verified, scientifically sound.
+- 5 to 8 (PARTIAL CAP): Exaggerated, clickbait, or key context missing.
+- 1 to 4 (TOTAL CAP): Fake news, debunked myth, or blatantly false.`
                 },
                 {
                     role: "user",
-                    content: `Analyze this content/claim: "${transcript}"
+                    content: `Analyze this claim/content: "${transcript}"
                     
-                    Return strict JSON schema:
+                    Return strict JSON:
                     {
                       "rating": number (1 to 10),
                       "verdict": "NO CAP 🧢" | "PARTIAL CAP 🧢🧢" | "TOTAL CAP 🧢🧢🧢",
-                      "factCheck": "Direct factual assessment of claims made",
-                      "theCatch": "Context missing, exaggerated claims, or hidden details",
-                      "tldr": "Exactly 2 sentences summarizing the reality"
+                      "factCheck": "Direct factual assessment",
+                      "theCatch": "Missing context or exaggerated claims",
+                      "tldr": "Exactly 2 sentences summarizing reality"
                     }`
                 }
             ],
@@ -216,8 +215,8 @@ RATING RUBRIC:
         res.json({ ...jsonResult, transcript: isUrl ? transcript : undefined });
 
     } catch (err) {
-        console.error("GROQ ANALYSIS ERROR:", err);
-        res.status(500).json({ error: err.message || 'Groq analysis failed.' });
+        console.error("GROQ ERROR:", err);
+        res.status(500).json({ error: err.message || 'AI analysis failed.' });
     }
 });
 
@@ -240,31 +239,26 @@ app.post('/api/check-video', upload.single('video'), async (req, res) => {
         safeUnlink(audioPath);
 
         if (!transcript || transcript.trim().length === 0) {
-            return res.status(400).json({ error: 'No speech detected in video.' });
+            return res.status(400).json({ error: 'No clear speech detected in video audio.' });
         }
 
         const completion = await groq.chat.completions.create({
             messages: [
                 {
                     role: "system",
-                    content: `You are markiv.site, a viral fact-checker. Respond ONLY with valid JSON.
-
-RATING RUBRIC:
-- 9 to 10 (NO CAP): 100% Factually verified, scientifically sound, no missing context.
-- 5 to 8 (PARTIAL CAP): Mixed truth, clickbait exaggeration, or crucial context omitted.
-- 1 to 4 (TOTAL CAP): Debunked myth, fake news, blatantly false or dangerous misinfo.`
+                    content: `You are markiv.site, a viral fact-checker. Respond ONLY with valid JSON.`
                 },
                 {
                     role: "user",
                     content: `Analyze this transcript: "${transcript}"
                     
-                    Return strict JSON schema:
+                    Return strict JSON:
                     {
                       "rating": number (1 to 10),
                       "verdict": "NO CAP 🧢" | "PARTIAL CAP 🧢🧢" | "TOTAL CAP 🧢🧢🧢",
                       "factCheck": "Direct factual assessment",
-                      "theCatch": "Context missing, exaggerated claims, or hidden details",
-                      "tldr": "Exactly 2 sentences summarizing the reality"
+                      "theCatch": "Missing context or exaggerated claims",
+                      "tldr": "Exactly 2 sentences summarizing reality"
                     }`
                 }
             ],
@@ -279,8 +273,7 @@ RATING RUBRIC:
     } catch (err) {
         safeUnlink(videoPath);
         safeUnlink(audioPath);
-        console.error("VIDEO CHECK ERROR:", err);
-        res.status(500).json({ error: err.message || 'Video analysis failed.' });
+        res.status(500).json({ error: err.message || 'Video processing failed.' });
     }
 });
 
@@ -318,9 +311,9 @@ app.post('/api/chat-assistant', async (req, res) => {
     }
 });
 
-// Health check endpoint for Cron-Job.org (Prevents Render Sleep Mode)
+// Health check endpoint for Cron-Job.org
 app.get('/health', (req, res) => {
-    res.status(200).send('Server is healthy and active');
+    res.status(200).send('Server is active');
 });
 
 // Start Server
