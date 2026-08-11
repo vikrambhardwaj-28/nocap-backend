@@ -5,6 +5,8 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { execFile } = require('child_process');
+const cheerio = require('cheerio');
+const axios = require('axios');
 const puppeteer = require('puppeteer');
 const Groq = require('groq-sdk');
 const { extractAudio, transcribeAudio } = require('./audioService');
@@ -32,7 +34,7 @@ const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 // HELPER FUNCTIONS
 // -------------------------------------------------------------
 
-// 1. Secure Audio Extraction via yt-dlp (Using execFile to prevent Command Injection)
+// 1. Secure Audio Extraction via yt-dlp (Using execFile)
 function downloadAudioFromUrl(url, outputAudioPath) {
     return new Promise((resolve, reject) => {
         const args = ['-x', '--audio-format', 'mp3', '-o', outputAudioPath, url];
@@ -43,13 +45,38 @@ function downloadAudioFromUrl(url, outputAudioPath) {
     });
 }
 
-// 2. Puppeteer Headless Scraper for Facebook/JS-heavy Links
+// 2. Optimized Scraper (Axios Fast Extraction with Puppeteer Fallback)
 async function scrapeWithPuppeteer(url) {
+    // Attempt 1: Fast Meta Tag Extraction via Axios + Cheerio
+    try {
+        console.log("Attempting fast HTML meta scraping via Axios...");
+        const response = await axios.get(url, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept-Language': 'en-US,en;q=0.9'
+            },
+            timeout: 8000
+        });
+
+        const $ = cheerio.load(response.data);
+        const ogTitle = $('meta[property="og:title"]').attr('content') || $('title').text() || '';
+        const ogDesc = $('meta[property="og:description"]').attr('content') || $('meta[name="description"]').attr('content') || '';
+
+        const metaContent = `${ogTitle}\n${ogDesc}`.trim();
+        if (metaContent.length > 20) {
+            console.log("Axios successfully extracted metadata.");
+            return metaContent;
+        }
+    } catch (axiosErr) {
+        console.log("Axios meta extraction failed/blocked, falling back to Puppeteer...");
+    }
+
+    // Attempt 2: Puppeteer Headless Browser
     let browser = null;
     try {
-        console.log("Launching Headless Browser for JS rendering...");
+        console.log("Launching Headless Browser...");
         browser = await puppeteer.launch({ 
-            headless: true,
+            headless: 'new',
             args: [
                 '--no-sandbox', 
                 '--disable-setuid-sandbox',
@@ -63,10 +90,20 @@ async function scrapeWithPuppeteer(url) {
         });
         const page = await browser.newPage();
         
-        await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
+        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
         
-        await new Promise(r => setTimeout(r, 2500));
+        // Block heavy resources (images, css, fonts) to save RAM on Render
+        await page.setRequestInterception(true);
+        page.on('request', (req) => {
+            if (['image', 'stylesheet', 'font', 'media'].includes(req.resourceType())) {
+                req.abort();
+            } else {
+                req.continue();
+            }
+        });
+
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
+        await new Promise(r => setTimeout(r, 1500));
 
         const extractedText = await page.evaluate(() => {
             const ogTitle = document.querySelector('meta[property="og:title"]')?.content || '';
@@ -80,13 +117,13 @@ async function scrapeWithPuppeteer(url) {
         await browser.close();
         return extractedText.trim();
     } catch (err) {
-        console.error("Puppeteer Scraping Failed:", err.message);
+        console.error("Puppeteer Scraping Error:", err.message);
         if (browser) await browser.close();
         return null;
     }
 }
 
-// Helper to safely cleanup files
+// Helper to safely cleanup temp files
 function safeUnlink(filePath) {
     if (filePath && fs.existsSync(filePath)) {
         try {
@@ -123,15 +160,15 @@ app.post('/api/check-text', async (req, res) => {
             transcript = await transcribeAudio(tempAudioPath);
             console.log("Audio transcript received from yt-dlp.");
         } catch (videoErr) {
-            console.log("Attempt 1 failed (Not a video/download error). Trying Headless Browser (Puppeteer)...");
+            console.log("Attempt 1 failed (Not a video/download error). Trying Scraper (Axios / Puppeteer)...");
             safeUnlink(tempAudioPath);
 
-            // Attempt 2: Puppeteer Headless Scraping for Articles/Social Posts
-            const puppeteerText = await scrapeWithPuppeteer(trimmedInput);
+            // Attempt 2: Scraping for Facebook/Articles
+            const pageText = await scrapeWithPuppeteer(trimmedInput);
             
-            if (puppeteerText && puppeteerText.length > 20) {
-                transcript = puppeteerText;
-                console.log("Puppeteer extracted page content successfully.");
+            if (pageText && pageText.length > 20) {
+                transcript = pageText;
+                console.log("Extracted page content successfully.");
             } else {
                 return res.status(400).json({ 
                     error: 'Unable to extract content automatically. Please copy-paste the text/caption directly!' 
