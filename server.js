@@ -34,7 +34,7 @@ const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 // HELPER FUNCTIONS
 // -------------------------------------------------------------
 
-// Helper to safely cleanup files
+// Helper to safely cleanup temp files
 function safeUnlink(filePath) {
     if (filePath && fs.existsSync(filePath)) {
         try {
@@ -56,80 +56,74 @@ function downloadAudioFromUrl(url, outputAudioPath) {
     });
 }
 
-// Multi-stage Content Extractor for Title, Description & Page Text
-async function extractContentFromUrl(url) {
-    console.log("Extracting title/metadata for URL:", url);
+// -------------------------------------------------------------
+// UNIVERSAL SCRAPER (INSTAGRAM, FACEBOOK, YOUTUBE & WEB)
+// -------------------------------------------------------------
+async function extractUniversalContent(url) {
+    console.log("Processing Universal Content Extraction for URL:", url);
 
-    // Stage 1: Axios Fast Metadata Scrape
+    // 1. YouTube Specific Fast oEmbed API (Never Blocked by Datacenter IPs)
+    if (url.includes('youtube.com') || url.includes('youtu.be')) {
+        try {
+            console.log("Trying YouTube oEmbed API...");
+            const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
+            const response = await axios.get(oembedUrl, { timeout: 5000 });
+            if (response.data && response.data.title) {
+                return `Platform: YouTube\nTitle: ${response.data.title}\nChannel: ${response.data.author_name}`;
+            }
+        } catch (e) {
+            console.log("YouTube oEmbed skipped/failed.");
+        }
+    }
+
+    // 2. Jina AI Reader (Bypasses IG, FB & YT Datacenter IP Blocks for Image & Video Posts)
     try {
-        console.log("Stage 1: Axios OpenGraph Scrape...");
+        console.log("Fetching content via Jina AI Reader Engine...");
+        const jinaUrl = `https://r.jina.ai/${url}`;
+        const response = await axios.get(jinaUrl, {
+            headers: {
+                'Accept': 'application/json',
+                'X-With-Generated-Alt': 'true' // Generates OCR text for Image posts
+            },
+            timeout: 12000
+        });
+
+        if (response.data && response.data.data) {
+            const pageData = response.data.data;
+            const title = pageData.title || '';
+            const content = pageData.content || '';
+
+            const extractedText = `Title: ${title}\nContent & Caption: ${content}`.slice(0, 3000);
+            
+            if (extractedText.length > 30) {
+                console.log("Jina AI Reader successfully extracted post/image content!");
+                return extractedText;
+            }
+        }
+    } catch (jinaErr) {
+        console.log("Jina AI Reader failed/timed out:", jinaErr.message);
+    }
+
+    // 3. Fallback: Fast Axios OpenGraph Scrape
+    try {
+        console.log("Fallback: Direct OpenGraph Scrape...");
         const response = await axios.get(url, {
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-                'Accept-Language': 'en-US,en;q=0.9',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
             },
-            timeout: 7000
+            timeout: 6000
         });
 
         const $ = cheerio.load(response.data);
         const ogTitle = $('meta[property="og:title"]').attr('content') || $('title').text() || '';
         const ogDesc = $('meta[property="og:description"]').attr('content') || $('meta[name="description"]').attr('content') || '';
-        const bodyText = $('p').text().slice(0, 1500) || '';
 
-        const combinedText = `Title: ${ogTitle}\nDescription: ${ogDesc}\nPage Text: ${bodyText}`.trim();
-        if (combinedText.length > 30) {
-            console.log("Stage 1 Success! Metadata extracted.");
-            return combinedText;
+        const metaText = `Title: ${ogTitle}\nCaption/Description: ${ogDesc}`.trim();
+        if (metaText.length > 25) {
+            return metaText;
         }
     } catch (e) {
-        console.log("Stage 1 Failed (Axios blocked/timeout):", e.message);
-    }
-
-    // Stage 2: Puppeteer Headless Backup
-    let browser = null;
-    try {
-        console.log("Stage 2: Puppeteer Browser Launch...");
-        browser = await puppeteer.launch({ 
-            headless: 'new',
-            args: [
-                '--no-sandbox', 
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-gpu',
-                '--single-process'
-            ]
-        });
-        const page = await browser.newPage();
-        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
-        
-        await page.setRequestInterception(true);
-        page.on('request', (req) => {
-            if (['image', 'stylesheet', 'font', 'media'].includes(req.resourceType())) {
-                req.abort();
-            } else {
-                req.continue();
-            }
-        });
-
-        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 12000 });
-        await new Promise(r => setTimeout(r, 1000));
-
-        const extractedText = await page.evaluate(() => {
-            const ogTitle = document.querySelector('meta[property="og:title"]')?.content || document.title || '';
-            const ogDesc = document.querySelector('meta[property="og:description"]')?.content || document.querySelector('meta[name="description"]')?.content || '';
-            const body = document.body?.innerText || '';
-            return `Title: ${ogTitle}\nDescription: ${ogDesc}\nPage Text: ${body}`.slice(0, 2500);
-        });
-
-        await browser.close();
-        if (extractedText.trim().length > 30) {
-            console.log("Stage 2 Success via Puppeteer.");
-            return extractedText.trim();
-        }
-    } catch (err) {
-        console.error("Stage 2 Puppeteer Error:", err.message);
-        if (browser) await browser.close();
+        console.log("OpenGraph fallback failed.");
     }
 
     return null;
@@ -154,37 +148,37 @@ app.post('/api/check-text', async (req, res) => {
         tempAudioPath = path.join('uploads', audioFilename);
 
         try {
-            console.log("Processing URL input:", trimmedInput);
+            console.log("Processing URL request:", trimmedInput);
 
-            // 1. Extract Video/Page Title and Metadata
-            const pageMeta = await extractContentFromUrl(trimmedInput) || '';
+            // Step A: Extract Post Captions/Text/OCR from IG, FB, YT via Universal Extractor
+            const postContent = await extractUniversalContent(trimmedInput) || '';
 
-            // 2. Extract Spoken Audio Transcript using yt-dlp
+            // Step B: Try Audio Extraction if it's a Video/Reel
             let audioTranscript = '';
             try {
-                console.log("Downloading audio with yt-dlp...");
+                console.log("Attempting Audio extraction with yt-dlp...");
                 await downloadAudioFromUrl(trimmedInput, tempAudioPath);
                 audioTranscript = await transcribeAudio(tempAudioPath);
-                console.log("Audio transcribed successfully.");
+                console.log("Audio speech transcribed successfully.");
             } catch (audioErr) {
-                console.log("Audio extraction failed or no audio track present:", audioErr.message);
+                console.log("No downloadable audio stream found or speech absent.");
             }
 
-            // 3. Combine Both (Title + Description + Audio Transcript)
+            // Step C: Merge Extracted Post Text + Spoken Audio Transcript
             if (audioTranscript && audioTranscript.trim().length > 0) {
-                transcript = `Video Context (Title & Description):\n${pageMeta}\n\nSpoken Audio Transcript:\n${audioTranscript}`;
-            } else if (pageMeta && pageMeta.trim().length > 25) {
-                transcript = `Video Context (Title & Description):\n${pageMeta}`;
+                transcript = `Post Details & Caption:\n${postContent}\n\nSpoken Audio Transcript:\n${audioTranscript}`;
+            } else if (postContent && postContent.trim().length > 20) {
+                transcript = `Post Details & Caption:\n${postContent}`;
             } else {
                 return res.status(400).json({ 
-                    error: 'Unable to extract content from link. Please copy-paste the claim text directly!' 
+                    error: 'Social media post content is completely private or restricted. Please copy-paste the text/caption directly!' 
                 });
             }
 
         } catch (err) {
             console.error("URL Processing Error:", err);
             return res.status(400).json({ 
-                error: 'Unable to process link automatically. Please copy-paste the claim text directly!' 
+                error: 'Unable to extract post data automatically. Please copy-paste the claim text directly!' 
             });
         } finally {
             safeUnlink(tempAudioPath);
@@ -214,7 +208,7 @@ Return strict JSON schema:
 {
   "rating": number (1 to 10),
   "verdict": "NO CAP 🧢" | "PARTIAL CAP 🧢🧢" | "TOTAL CAP 🧢🧢🧢",
-  "factCheck": "Direct factual assessment of the core claims made",
+  "factCheck": "Direct factual assessment of the claims made",
   "theCatch": "Missing context, exaggerated claims, or hidden details",
   "tldr": "Exactly 2 sentences summarizing reality"
 }`
@@ -325,7 +319,7 @@ app.post('/api/chat-assistant', async (req, res) => {
     }
 });
 
-// Health check endpoint for Cron-Job.org
+// Health check endpoint for Cron-Job.org (Prevents Render Sleep Mode)
 app.get('/health', (req, res) => {
     res.status(200).send('Server is active');
 });
