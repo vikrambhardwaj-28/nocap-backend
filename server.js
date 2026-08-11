@@ -18,7 +18,7 @@ app.use(express.json());
 app.use(cors());
 app.use(express.static('public'));
 
-// Uploads dir check
+// Ensure uploads directory exists
 if (!fs.existsSync('uploads')) {
     fs.mkdirSync('uploads');
 }
@@ -56,9 +56,9 @@ function downloadAudioFromUrl(url, outputAudioPath) {
     });
 }
 
-// Multi-stage Content Extractor for Social Links & Webpages
+// Multi-stage Content Extractor for Title, Description & Page Text
 async function extractContentFromUrl(url) {
-    console.log("Extracting content for URL:", url);
+    console.log("Extracting title/metadata for URL:", url);
 
     // Stage 1: Axios Fast Metadata Scrape
     try {
@@ -77,9 +77,9 @@ async function extractContentFromUrl(url) {
         const ogDesc = $('meta[property="og:description"]').attr('content') || $('meta[name="description"]').attr('content') || '';
         const bodyText = $('p').text().slice(0, 1500) || '';
 
-        const combinedText = `${ogTitle}\n${ogDesc}\n${bodyText}`.trim();
+        const combinedText = `Title: ${ogTitle}\nDescription: ${ogDesc}\nPage Text: ${bodyText}`.trim();
         if (combinedText.length > 30) {
-            console.log("Stage 1 Success! Text extracted.");
+            console.log("Stage 1 Success! Metadata extracted.");
             return combinedText;
         }
     } catch (e) {
@@ -116,10 +116,10 @@ async function extractContentFromUrl(url) {
         await new Promise(r => setTimeout(r, 1000));
 
         const extractedText = await page.evaluate(() => {
-            const ogTitle = document.querySelector('meta[property="og:title"]')?.content || '';
-            const ogDesc = document.querySelector('meta[property="og:description"]')?.content || '';
+            const ogTitle = document.querySelector('meta[property="og:title"]')?.content || document.title || '';
+            const ogDesc = document.querySelector('meta[property="og:description"]')?.content || document.querySelector('meta[name="description"]')?.content || '';
             const body = document.body?.innerText || '';
-            return `${ogTitle}\n${ogDesc}\n${body}`.slice(0, 2500);
+            return `Title: ${ogTitle}\nDescription: ${ogDesc}\nPage Text: ${body}`.slice(0, 2500);
         });
 
         await browser.close();
@@ -153,39 +153,52 @@ app.post('/api/check-text', async (req, res) => {
         const audioFilename = `link_${Date.now()}.mp3`;
         tempAudioPath = path.join('uploads', audioFilename);
 
-        // Attempt A: Video reel audio download
         try {
-            console.log("Attempt A: Video Audio extraction...");
-            await downloadAudioFromUrl(trimmedInput, tempAudioPath);
-            transcript = await transcribeAudio(tempAudioPath);
-            console.log("Audio transcribed successfully.");
-        } catch (videoErr) {
-            console.log("Not a video or yt-dlp failed. Trying Web Scraping...");
-            safeUnlink(tempAudioPath);
+            console.log("Processing URL input:", trimmedInput);
 
-            // Attempt B: Extract text metadata from URL
-            const extractedPageText = await extractContentFromUrl(trimmedInput);
-            
-            if (extractedPageText && extractedPageText.length > 25) {
-                transcript = extractedPageText;
+            // 1. Extract Video/Page Title and Metadata
+            const pageMeta = await extractContentFromUrl(trimmedInput) || '';
+
+            // 2. Extract Spoken Audio Transcript using yt-dlp
+            let audioTranscript = '';
+            try {
+                console.log("Downloading audio with yt-dlp...");
+                await downloadAudioFromUrl(trimmedInput, tempAudioPath);
+                audioTranscript = await transcribeAudio(tempAudioPath);
+                console.log("Audio transcribed successfully.");
+            } catch (audioErr) {
+                console.log("Audio extraction failed or no audio track present:", audioErr.message);
+            }
+
+            // 3. Combine Both (Title + Description + Audio Transcript)
+            if (audioTranscript && audioTranscript.trim().length > 0) {
+                transcript = `Video Context (Title & Description):\n${pageMeta}\n\nSpoken Audio Transcript:\n${audioTranscript}`;
+            } else if (pageMeta && pageMeta.trim().length > 25) {
+                transcript = `Video Context (Title & Description):\n${pageMeta}`;
             } else {
                 return res.status(400).json({ 
-                    error: 'Facebook/Instagram is blocking automated access from cloud server. Please copy-paste the text/caption directly into the box!' 
+                    error: 'Unable to extract content from link. Please copy-paste the claim text directly!' 
                 });
             }
+
+        } catch (err) {
+            console.error("URL Processing Error:", err);
+            return res.status(400).json({ 
+                error: 'Unable to process link automatically. Please copy-paste the claim text directly!' 
+            });
         } finally {
             safeUnlink(tempAudioPath);
         }
     }
 
-    // Groq Fact Checking
+    // Groq Fact Checking Analysis
     try {
         console.log("Analyzing claim with Groq LLM...");
         const completion = await groq.chat.completions.create({
             messages: [
                 {
                     role: "system",
-                    content: `You are markiv.site, an elite fact-checker. Respond ONLY with valid JSON.
+                    content: `You are markiv.site, an elite viral fact-checker. Respond ONLY with valid JSON.
                     
 RATING RUBRIC:
 - 9 to 10 (NO CAP): 100% Factually verified, scientifically sound.
@@ -194,16 +207,17 @@ RATING RUBRIC:
                 },
                 {
                     role: "user",
-                    content: `Analyze this claim/content: "${transcript}"
-                    
-                    Return strict JSON:
-                    {
-                      "rating": number (1 to 10),
-                      "verdict": "NO CAP 🧢" | "PARTIAL CAP 🧢🧢" | "TOTAL CAP 🧢🧢🧢",
-                      "factCheck": "Direct factual assessment",
-                      "theCatch": "Missing context or exaggerated claims",
-                      "tldr": "Exactly 2 sentences summarizing reality"
-                    }`
+                    content: `Analyze this content/claim:
+"${transcript}"
+
+Return strict JSON schema:
+{
+  "rating": number (1 to 10),
+  "verdict": "NO CAP 🧢" | "PARTIAL CAP 🧢🧢" | "TOTAL CAP 🧢🧢🧢",
+  "factCheck": "Direct factual assessment of the core claims made",
+  "theCatch": "Missing context, exaggerated claims, or hidden details",
+  "tldr": "Exactly 2 sentences summarizing reality"
+}`
                 }
             ],
             model: "llama-3.3-70b-versatile",
