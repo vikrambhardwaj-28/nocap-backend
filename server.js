@@ -5,15 +5,13 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { exec } = require('child_process');
-const axios = require('axios');
-const cheerio = require('cheerio');
 const Groq = require('groq-sdk');
 const ffmpegPath = require('ffmpeg-static');
 const { extractAudio, transcribeAudio } = require('./audioService');
 
 const app = express();
 
-// Middleware
+// Middleware Setup
 app.use(express.json());
 app.use(cors());
 app.use(express.static('public'));
@@ -22,7 +20,7 @@ if (!fs.existsSync('uploads')) {
     fs.mkdirSync('uploads');
 }
 
-// Multer configured for video file uploads (100MB Limit)
+// Multer Configured for Video Uploads (100MB Limit)
 const upload = multer({ 
     dest: 'uploads/',
     limits: { fileSize: 100 * 1024 * 1024 }
@@ -30,29 +28,22 @@ const upload = multer({
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-// Cloudflare Proxy Fallback Configuration
-const CLOUDFLARE_PROXY_URL = 'https://nocap-proxy.vikram-2872006.workers.dev?url=';
-
 // =============================================================
-// HELPER FUNCTIONS (ROBUST AUDIO & TEXT PIPELINE)
+// UNIFIED AUDIO DOWNLOADER (Insta, FB & YouTube)
 // =============================================================
-
-// 1. Enhanced Audio Downloader for YouTube, Facebook & Instagram via yt-dlp
 function downloadAudioFromUrl(url, outputAudioPath) {
     return new Promise((resolve, reject) => {
+        // Detect local yt-dlp binary if installed via postinstall hook, else use system binary
         const ytDlpExecutable = fs.existsSync('./yt-dlp') ? './yt-dlp' : 'yt-dlp';
         
-        // Clean URL parameters that break tracking (keeping necessary video IDs)
-        const cleanUrl = url.trim();
+        console.log(`[AUDIO EXTRACT] Downloading audio using ${ytDlpExecutable} for URL: ${url}`);
 
-        console.log(`Downloading audio using ${ytDlpExecutable} for URL:`, cleanUrl);
-
-        // Advanced yt-dlp command with Android/Web client spoofing and mobile user agent to bypass cloud blocks
-        const command = `${ytDlpExecutable} --ffmpeg-location "${ffmpegPath}" --extractor-args "youtube:player_client=android,web" --user-agent "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1" -x --audio-format mp3 -o "${outputAudioPath}" "${cleanUrl}"`;
+        // Unified command with spoofed clients & mobile headers to bypass bot blocks across Insta/FB/YouTube
+        const command = `${ytDlpExecutable} --ffmpeg-location "${ffmpegPath}" --extractor-args "youtube:player_client=android,web" --user-agent "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1" -x --audio-format mp3 -o "${outputAudioPath}" "${url}"`;
         
-        exec(command, { timeout: 60000 }, (error, stdout, stderr) => {
+        exec(command, { timeout: 90000 }, (error, stdout, stderr) => {
             if (error) {
-                console.error("yt-dlp execution error:", error.message);
+                console.error("[yt-dlp ERROR]:", error.message);
                 return reject(error);
             }
             resolve(outputAudioPath);
@@ -60,35 +51,8 @@ function downloadAudioFromUrl(url, outputAudioPath) {
     });
 }
 
-// 2. Smart Metadata & Caption Fallback (For YouTube, Facebook & Instagram)
-async function fetchCaptionFallback(url) {
-    try {
-        console.log("Fallback: Extracting OpenGraph Metadata/Captions...");
-        const cleanUrl = url.split('?')[0].replace(/\/$/, "");
-        
-        // Try Cloudflare Proxy or direct Axios with mobile UA
-        const response = await axios.get(`${CLOUDFLARE_PROXY_URL}${encodeURIComponent(url)}`, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15'
-            },
-            timeout: 10000
-        });
-
-        const $ = cheerio.load(response.data);
-        const title = $('meta[property="og:title"]').attr('content') || $('title').text() || '';
-        const description = $('meta[property="og:description"]').attr('content') || $('meta[name="description"]').attr('content') || '';
-        const caption = $('.Caption').text() || '';
-
-        const fullText = `${title}\n${description}\n${caption}`.replace(/\s+/g, ' ').trim();
-        return fullText.length > 5 ? fullText : null;
-    } catch (err) {
-        console.error("Fallback Extraction Failed:", err.message);
-        return null;
-    }
-}
-
 // =============================================================
-// 1. TEXT, LINK & ARTICLE FACT-CHECK ENDPOINT
+// 1. UNIFIED URL & TEXT FACT-CHECK ENDPOINT
 // =============================================================
 app.post('/api/check-text', async (req, res) => {
     const { text } = req.body;
@@ -101,49 +65,45 @@ app.post('/api/check-text', async (req, res) => {
     let transcript = cleanInput;
 
     if (isUrl) {
-        console.log("Processing URL Input:", cleanInput);
-        const audioFilename = `media_audio_${Date.now()}.mp3`;
+        console.log("--------------------------------------------------");
+        console.log("Processing URL (Audio ➔ Text Pipeline):", cleanInput);
+        
+        const audioFilename = `audio_${Date.now()}.mp3`;
         const audioPath = path.join('uploads', audioFilename);
 
-        let audioExtractedSuccessfully = false;
-
-        // STEP 1: Attempt Audio Download & Speech-to-Text Transcription (Main Logic)
         try {
-            console.log("Attempting audio extraction & speech transcription...");
+            // STEP 1: Download Audio Stream
+            console.log("Step 1: Downloading Audio Stream...");
             await downloadAudioFromUrl(cleanInput, audioPath);
 
-            console.log("Transcribing audio speech to text via Whisper...");
+            // STEP 2: Transcribe Speech to Text
+            console.log("Step 2: Transcribing Audio Speech to Text...");
             const audioTranscript = await transcribeAudio(audioPath);
 
+            // Cleanup audio file immediately
             if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
 
-            if (audioTranscript && audioTranscript.trim().length > 5) {
-                transcript = audioTranscript;
-                audioExtractedSuccessfully = true;
-                console.log("SUCCESS: Audio successfully transcribed to text!");
-            }
-        } catch (audioErr) {
-            console.log("Audio download/transcription restricted or failed. Falling back to metadata...");
-            if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
-        }
-
-        // STEP 2: Fallback to Caption / Metadata if Audio Extraction Fails
-        if (!audioExtractedSuccessfully) {
-            const fallbackText = await fetchCaptionFallback(cleanInput);
-            if (fallbackText && fallbackText.length > 5) {
-                transcript = fallbackText;
-                console.log("SUCCESS: Retrieved text via metadata fallback.");
-            } else {
+            if (!audioTranscript || audioTranscript.trim().length === 0) {
                 return res.status(400).json({ 
-                    error: 'Unable to extract audio speech or caption from link. The video might be private, age-restricted, or geo-blocked.' 
+                    error: 'No clear speech detected in the audio of this link.' 
                 });
             }
+
+            transcript = audioTranscript;
+            console.log("Step 2 Completed. Transcribed Text:", transcript.slice(0, 150) + "...");
+
+        } catch (err) {
+            if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
+            console.error("Audio Pipeline Error:", err.message);
+            return res.status(400).json({ 
+                error: 'Failed to extract audio speech from this link. The video might be private or restricted.' 
+            });
         }
     }
 
-    // STEP 3: AI Fact-Checking Engine via Groq
+    // STEP 3: Pass Transcribed Text to Groq AI for Fact Checking
     try {
-        console.log("Analyzing content with Groq AI...");
+        console.log("Step 3: Fact-Checking Transcribed Speech via Groq AI...");
         const completion = await groq.chat.completions.create({
             messages: [
                 {
@@ -175,6 +135,9 @@ RATING RUBRIC:
         });
 
         const jsonResult = JSON.parse(completion.choices[0].message.content);
+        console.log("Step 3 Completed successfully.");
+        console.log("--------------------------------------------------");
+
         res.json({ ...jsonResult, transcript: isUrl ? transcript : undefined });
 
     } catch (err) {
@@ -184,7 +147,7 @@ RATING RUBRIC:
 });
 
 // =============================================================
-// 2. VIDEO FILE UPLOAD ENDPOINT
+// 2. DIRECT VIDEO FILE UPLOAD ENDPOINT
 // =============================================================
 app.post('/api/check-video', upload.single('video'), async (req, res) => {
     if (!req.file) {
@@ -195,7 +158,7 @@ app.post('/api/check-video', upload.single('video'), async (req, res) => {
     const audioPath = path.join('uploads', `${req.file.filename}.mp3`);
 
     try {
-        console.log("Extracting audio from uploaded video...");
+        console.log("Extracting audio from uploaded video file...");
         await extractAudio(videoPath, audioPath);
         
         console.log("Transcribing extracted audio...");
@@ -315,7 +278,7 @@ app.post('/api/chat-assistant', async (req, res) => {
     const { message, mode } = req.body;
     
     if (!message) {
-        return res.status(400).json({ reply: "Please type a valuable message." });
+        return res.status(400).json({ reply: "Please type a valid message." });
     }
 
     let systemInstruction = "You are the markiv.site AI Assistant. Keep answers concise, helpful, and focused on assisting users with verifying viral claims, links, and videos on markiv.site.";
@@ -343,13 +306,14 @@ app.post('/api/chat-assistant', async (req, res) => {
 });
 
 // =============================================================
-// SERVER LISTENER & CRASH PROTECTION
+// SERVER LISTENER & CRASH PREVENTION
 // =============================================================
 const PORT = process.env.PORT || 5001;
 
 const server = app.listen(PORT, '0.0.0.0', () => {
-    coutLog = `=================================\nmarkiv.site Server RUNNING on http://localhost:${PORT}\n=================================`;
-    console.log(coutLog);
+    console.log(`=================================`);
+    console.log(`markiv.site Server RUNNING on http://localhost:${PORT}`);
+    console.log(`=================================`);
 });
 
 server.timeout = 300000;
