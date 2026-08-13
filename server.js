@@ -5,6 +5,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { exec } = require('child_process');
+const axios = require('axios');
 const Groq = require('groq-sdk');
 const ffmpegPath = require('ffmpeg-static');
 const { extractAudio, transcribeAudio } = require('./audioService');
@@ -29,26 +30,74 @@ const upload = multer({
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 // =============================================================
-// UNIFIED AUDIO DOWNLOADER (Insta, FB & YouTube)
+// UNIFIED AUDIO DOWNLOADER ENGINE (yt-dlp + Cobalt Streamer)
 // =============================================================
-function downloadAudioFromUrl(url, outputAudioPath) {
-    return new Promise((resolve, reject) => {
-        // Detect local yt-dlp binary if installed via postinstall hook, else use system binary
-        const ytDlpExecutable = fs.existsSync('./yt-dlp') ? './yt-dlp' : 'yt-dlp';
-        
-        console.log(`[AUDIO EXTRACT] Downloading audio using ${ytDlpExecutable} for URL: ${url}`);
+async function downloadAudioFromUrl(url, outputAudioPath) {
+    const cleanUrl = url.trim();
 
-        // Unified command with spoofed clients & mobile headers to bypass bot blocks across Insta/FB/YouTube
-        const command = `${ytDlpExecutable} --ffmpeg-location "${ffmpegPath}" --extractor-args "youtube:player_client=android,web" --user-agent "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1" -x --audio-format mp3 -o "${outputAudioPath}" "${url}"`;
-        
-        exec(command, { timeout: 90000 }, (error, stdout, stderr) => {
-            if (error) {
-                console.error("[yt-dlp ERROR]:", error.message);
-                return reject(error);
-            }
-            resolve(outputAudioPath);
+    // METHOD 1: Try local yt-dlp audio download
+    try {
+        console.log("[AUDIO] Attempt 1: Downloading audio with yt-dlp...");
+        await new Promise((resolve, reject) => {
+            const ytDlpExecutable = fs.existsSync('./yt-dlp') ? './yt-dlp' : 'yt-dlp';
+            const command = `${ytDlpExecutable} --ffmpeg-location "${ffmpegPath}" --extractor-args "youtube:player_client=android,web" --user-agent "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15" -x --audio-format mp3 -o "${outputAudioPath}" "${cleanUrl}"`;
+            
+            exec(command, { timeout: 45000 }, (error) => {
+                if (error) return reject(error);
+                resolve();
+            });
         });
-    });
+
+        if (fs.existsSync(outputAudioPath) && fs.statSync(outputAudioPath).size > 1000) {
+            console.log("[AUDIO] SUCCESS via yt-dlp!");
+            return outputAudioPath;
+        }
+    } catch (ytErr) {
+        console.log("[AUDIO] yt-dlp failed (Datacenter IP Block). Switching to Cobalt Audio Streamer...");
+    }
+
+    // METHOD 2: Cobalt API (Bypasses Render IP block & fetches direct MP3 file)
+    try {
+        console.log("[AUDIO] Attempt 2: Downloading MP3 stream via Cobalt Engine...");
+        const response = await axios.post('https://api.cobalt.tools/api/json', {
+            url: cleanUrl,
+            downloadMode: "audio",
+            audioFormat: "mp3"
+        }, {
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+            },
+            timeout: 20000
+        });
+
+        const audioStreamUrl = response.data?.url;
+        if (!audioStreamUrl) {
+            throw new Error("No audio stream URL returned from Cobalt");
+        }
+
+        console.log("[AUDIO] Streaming MP3 to local uploads folder...");
+        const writer = fs.createWriteStream(outputAudioPath);
+        const streamRes = await axios.get(audioStreamUrl, { responseType: 'stream', timeout: 30000 });
+
+        await new Promise((resolve, reject) => {
+            streamRes.data.pipe(writer);
+            writer.on('finish', resolve);
+            writer.on('error', reject);
+        });
+
+        if (fs.existsSync(outputAudioPath) && fs.statSync(outputAudioPath).size > 1000) {
+            console.log("[AUDIO] SUCCESS via Cobalt Streamer!");
+            return outputAudioPath;
+        } else {
+            throw new Error("Downloaded audio file is empty.");
+        }
+
+    } catch (cobaltErr) {
+        console.error("[AUDIO] Cobalt Streamer Error:", cobaltErr.message);
+        throw new Error("Failed to extract audio from all engines.");
+    }
 }
 
 // =============================================================
@@ -66,44 +115,44 @@ app.post('/api/check-text', async (req, res) => {
 
     if (isUrl) {
         console.log("--------------------------------------------------");
-        console.log("Processing URL (Audio ➔ Text Pipeline):", cleanInput);
+        console.log("Processing URL (Audio ➔ Speech-to-Text Pipeline):", cleanInput);
         
         const audioFilename = `audio_${Date.now()}.mp3`;
         const audioPath = path.join('uploads', audioFilename);
 
         try {
-            // STEP 1: Download Audio Stream
-            console.log("Step 1: Downloading Audio Stream...");
+            // STEP 1: Download Audio Stream to MP3 File
+            console.log("Step 1: Downloading Audio File...");
             await downloadAudioFromUrl(cleanInput, audioPath);
 
-            // STEP 2: Transcribe Speech to Text
-            console.log("Step 2: Transcribing Audio Speech to Text...");
+            // STEP 2: Transcribe Speech to Text via Whisper
+            console.log("Step 2: Transcribing Audio Speech to Text via Whisper...");
             const audioTranscript = await transcribeAudio(audioPath);
 
-            // Cleanup audio file immediately
+            // Clean up downloaded MP3 file
             if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
 
             if (!audioTranscript || audioTranscript.trim().length === 0) {
                 return res.status(400).json({ 
-                    error: 'No clear speech detected in the audio of this link.' 
+                    error: 'No speech detected in the audio of this link.' 
                 });
             }
 
             transcript = audioTranscript;
-            console.log("Step 2 Completed. Transcribed Text:", transcript.slice(0, 150) + "...");
+            console.log("Step 2 Completed. Speech Transcript:", transcript.slice(0, 150) + "...");
 
         } catch (err) {
             if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
-            console.error("Audio Pipeline Error:", err.message);
+            console.error("Audio Speech Pipeline Error:", err.message);
             return res.status(400).json({ 
                 error: 'Failed to extract audio speech from this link. The video might be private or restricted.' 
             });
         }
     }
 
-    // STEP 3: Pass Transcribed Text to Groq AI for Fact Checking
+    // STEP 3: Pass Transcribed Speech Text to Groq AI for Fact-Checking
     try {
-        console.log("Step 3: Fact-Checking Transcribed Speech via Groq AI...");
+        console.log("Step 3: Analyzing Transcribed Speech via Groq AI...");
         const completion = await groq.chat.completions.create({
             messages: [
                 {
