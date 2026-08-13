@@ -8,144 +8,73 @@ const { exec } = require('child_process');
 const axios = require('axios');
 const cheerio = require('cheerio');
 const Groq = require('groq-sdk');
+const ffmpegPath = require('ffmpeg-static'); // Static FFmpeg Binary
 const { extractAudio, transcribeAudio } = require('./audioService');
 
 const app = express();
 
-// Middleware Configuration
+// Middleware
 app.use(express.json());
 app.use(cors());
 app.use(express.static('public'));
 
-// Ensure uploads folder exists
 if (!fs.existsSync('uploads')) {
     fs.mkdirSync('uploads');
 }
 
-// Multer Configured for Video Uploads (100MB Limit)
+// Multer configured for video file uploads (100MB Limit)
 const upload = multer({ 
     dest: 'uploads/',
     limits: { fileSize: 100 * 1024 * 1024 }
 });
 
-// Initialize Groq AI Client
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 // Cloudflare Proxy Fallback Configuration
 const CLOUDFLARE_PROXY_URL = 'https://nocap-proxy.vikram-2872006.workers.dev?url=';
 
 // =============================================================
-// HELPER FUNCTIONS (100% FREE PIPELINE)
+// HELPER FUNCTIONS (SPEECH-TO-TEXT PIPELINE WITH FFMPEG FIX)
 // =============================================================
 
-// 1. Social Media Meta Extractor (Instagram / Facebook - No API Key, No 403 Block)
-async function fetchSocialMediaMetadata(url) {
-    const cleanUrl = url.split('?')[0].replace(/\/$/, "");
-    console.log("Processing Meta Link (Free Pipeline):", cleanUrl);
-
-    // METHOD 1: Instagram Embed Page Scraping (Fastest & 100% Free)
-    try {
-        console.log("Attempt 1: Scraping Instagram Embed Page...");
-        const embedUrl = `${cleanUrl}/embed/captioned/`;
-        
-        const embedRes = await axios.get(embedUrl, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1'
-            },
-            timeout: 8000
-        });
-
-        const $ = cheerio.load(embedRes.data);
-        
-        let caption = $('.Caption').text() || $('.CaptionComments').text() || $('meta[property="og:title"]').attr('content') || '';
-        caption = caption.replace(/\s+/g, ' ').trim();
-
-        if (caption.length > 5) {
-            console.log("SUCCESS via Instagram Embed Scraper!");
-            return caption;
-        }
-    } catch (err) {
-        console.log("Embed method skipped, trying Cobalt Open-Source Engine...");
-    }
-
-    // METHOD 2: Cobalt Open-Source API (Free Community Service)
-    try {
-        console.log("Attempt 2: Fetching via Open-Source Cobalt Engine...");
-        const response = await axios.post('https://api.cobalt.tools/api/json', {
-            url: cleanUrl
-        }, {
-            headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json',
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
-            },
-            timeout: 10000
-        });
-
-        if (response.data && (response.data.text || response.data.filename)) {
-            const extractedText = response.data.text || response.data.filename;
-            console.log("SUCCESS via Cobalt API!");
-            return extractedText.trim();
-        }
-    } catch (cobaltErr) {
-        console.error("Cobalt Engine Fallback Error:", cobaltErr.message);
-    }
-
-    // METHOD 3: Open Graph Meta Tag Scraping via Cloudflare Proxy
-    try {
-        console.log("Attempt 3: Direct Meta Tag Proxy Scraping...");
-        const metaRes = await axios.get(`${CLOUDFLARE_PROXY_URL}${encodeURIComponent(cleanUrl)}`, {
-            timeout: 8000,
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            }
-        });
-        const $ = cheerio.load(metaRes.data);
-        const title = $('meta[property="og:title"]').attr('content') || $('title').text() || '';
-        const desc = $('meta[property="og:description"]').attr('content') || '';
-
-        const combined = `${title} ${desc}`.trim();
-        if (combined.length > 5) {
-            console.log("SUCCESS via Proxy Meta Tags!");
-            return combined;
-        }
-    } catch (metaErr) {
-        console.error("Meta Tag Scraping Error:", metaErr.message);
-    }
-
-    return null;
-}
-
-// 2. Video Audio Downloader (yt-dlp for YouTube)
+// 1. Download Audio Stream via local ./yt-dlp binary & ffmpeg-static
 function downloadAudioFromUrl(url, outputAudioPath) {
     return new Promise((resolve, reject) => {
-        const command = `yt-dlp --extractor-args "youtube:player_client=android,web" -x --audio-format mp3 -o "${outputAudioPath}" "${url}"`;
+        // Detect if local yt-dlp downloaded via postinstall exists, otherwise use global yt-dlp
+        const ytDlpExecutable = fs.existsSync('./yt-dlp') ? './yt-dlp' : 'yt-dlp';
+        
+        console.log(`Using yt-dlp binary: ${ytDlpExecutable}`);
+        console.log(`Using FFmpeg binary: ${ffmpegPath}`);
+
+        const command = `${ytDlpExecutable} --ffmpeg-location "${ffmpegPath}" --extractor-args "youtube:player_client=android,web" -x --audio-format mp3 -o "${outputAudioPath}" "${url}"`;
+        
         exec(command, (error, stdout, stderr) => {
-            if (error) return reject(error);
+            if (error) {
+                console.error("yt-dlp audio download error:", error.message);
+                return reject(error);
+            }
             resolve(outputAudioPath);
         });
     });
 }
 
-// 3. Lightweight Article Scraper (Cheerio for Cloud Deployments)
-async function scrapeWebArticle(url) {
+// 2. Fallback Caption Extractor (Used if video speech extraction is blocked/fails)
+async function fetchCaptionFallback(url) {
+    const cleanUrl = url.split('?')[0].replace(/\/$/, "");
     try {
-        console.log("Fetching Web Page via Axios + Cheerio...");
-        const response = await axios.get(`${CLOUDFLARE_PROXY_URL}${encodeURIComponent(url)}`, {
-            timeout: 10000,
+        console.log("Fallback: Extracting Caption/Metadata...");
+        const embedUrl = `${cleanUrl}/embed/captioned/`;
+        const embedRes = await axios.get(embedUrl, {
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            }
+                'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15'
+            },
+            timeout: 8000
         });
 
-        const $ = cheerio.load(response.data);
-        const ogTitle = $('meta[property="og:title"]').attr('content') || $('title').text() || '';
-        const ogDesc = $('meta[property="og:description"]').attr('content') || $('meta[name="description"]').attr('content') || '';
-        const bodyText = $('body').text().replace(/\s+/g, ' ').slice(0, 2500);
-
-        return `${ogTitle}\n${ogDesc}\n${bodyText}`.trim();
+        const $ = cheerio.load(embedRes.data);
+        let caption = $('.Caption').text() || $('.CaptionComments').text() || $('meta[property="og:title"]').attr('content') || '';
+        return caption.replace(/\s+/g, ' ').trim();
     } catch (err) {
-        console.error("Cheerio Web Scraping Failed:", err.message);
         return null;
     }
 }
@@ -165,58 +94,46 @@ app.post('/api/check-text', async (req, res) => {
 
     if (isUrl) {
         console.log("Processing URL Input:", cleanInput);
+        const audioFilename = `social_audio_${Date.now()}.mp3`;
+        const audioPath = path.join('uploads', audioFilename);
 
-        const isMetaLink = /instagram\.com|facebook\.com|fb\.watch/i.test(cleanInput);
-        const isYouTubeLink = /youtube\.com|youtu\.be/i.test(cleanInput);
+        // STEP 1: Attempt Audio Download & Speech-to-Text Transcription
+        try {
+            console.log("Downloading audio stream via yt-dlp + ffmpeg-static...");
+            await downloadAudioFromUrl(cleanInput, audioPath);
 
-        // ROUTE 1: INSTAGRAM & FACEBOOK LINKS
-        if (isMetaLink) {
-            console.log("Detected Instagram/Facebook Link...");
-            const socialContent = await fetchSocialMediaMetadata(cleanInput);
-            if (socialContent && socialContent.length > 5) {
-                transcript = socialContent;
+            console.log("Transcribing audio speech to text...");
+            const audioTranscript = await transcribeAudio(audioPath);
+
+            if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
+
+            if (audioTranscript && audioTranscript.trim().length > 5) {
+                transcript = audioTranscript;
+                console.log("SUCCESS: Audio speech successfully transcribed!");
+            } else {
+                throw new Error("Empty audio transcription");
+            }
+
+        } catch (audioErr) {
+            console.log("Audio Speech extraction failed/blocked. Attempting Caption Fallback...");
+            if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
+
+            // STEP 2: Fallback to Caption / Meta Text if Speech Extraction Fails
+            const captionText = await fetchCaptionFallback(cleanInput);
+            if (captionText && captionText.length > 5) {
+                transcript = captionText;
+                console.log("Used Caption Text as fallback.");
             } else {
                 return res.status(400).json({ 
-                    error: 'Unable to extract content. The post might be private or protected. Try pasting the text directly!' 
-                });
-            }
-        } 
-        // ROUTE 2: YOUTUBE LINKS
-        else if (isYouTubeLink) {
-            console.log("Detected YouTube Link. Extracting Audio & Transcribing Speech...");
-            const audioFilename = `yt_${Date.now()}.mp3`;
-            const audioPath = path.join('uploads', audioFilename);
-
-            try {
-                await downloadAudioFromUrl(cleanInput, audioPath);
-                transcript = await transcribeAudio(audioPath);
-                console.log("Successfully Transcribed YouTube Audio.");
-                if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
-            } catch (ytErr) {
-                console.error("YouTube Extraction Failed:", ytErr.message);
-                if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
-                return res.status(400).json({ 
-                    error: 'Failed to extract or transcribe YouTube audio. Video might be restricted.' 
-                });
-            }
-        } 
-        // ROUTE 3: WEBSITES & ARTICLES
-        else {
-            console.log("Detected General Web Article...");
-            const articleText = await scrapeWebArticle(cleanInput);
-            if (articleText && articleText.length > 20) {
-                transcript = articleText;
-            } else {
-                return res.status(400).json({ 
-                    error: 'Unable to scrape website content. Please copy-paste the claim or text directly!' 
+                    error: 'Unable to extract audio speech or caption from link. Post might be private or restricted.' 
                 });
             }
         }
     }
 
-    // AI Analysis with Groq
+    // STEP 3: AI Fact-Checking Engine via Groq
     try {
-        console.log("Analyzing Claim Content with Groq AI...");
+        console.log("Analyzing transcribed content with Groq AI...");
         const completion = await groq.chat.completions.create({
             messages: [
                 {
@@ -230,7 +147,7 @@ RATING RUBRIC:
                 },
                 {
                     role: "user",
-                    content: `Analyze this content/claim: "${transcript}"
+                    content: `Analyze this content/claim transcript: "${transcript}"
                     
                     Return strict JSON schema:
                     {
@@ -334,8 +251,6 @@ app.post('/api/translate', async (req, res) => {
         if (!targetLang || !factCheck) {
             return res.status(400).json({ error: 'Missing target language or fact-check content.' });
         }
-
-        console.log(`[TRANSLATE] Translating result to: ${targetLang}`);
 
         const safeFactCheck = String(factCheck || '').replace(/["']/g, '');
         const safeTheCatch = String(theCatch || '').replace(/["']/g, '');
