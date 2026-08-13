@@ -42,11 +42,14 @@ const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || 'fe1ae17be4msh6598cb25386ba06p1
 // 1. RapidAPI Extractor for Meta Links (Instagram / Facebook) -> Zero IP Block
 async function fetchSocialMediaMetadata(url) {
     try {
-        console.log("Fetching content via RapidAPI (Bypassing IP Block)...");
+        // Clean tracking parameters (?igsh=..., ?utm_source=...)
+        const cleanUrl = url.split('?')[0];
+        console.log("Fetching clean Meta URL via RapidAPI:", cleanUrl);
+
         const options = {
             method: 'GET',
             url: 'https://instagram-downloader-scraper-reels-igtv-posts-stories.p.rapidapi.com/scraper',
-            params: { url: url },
+            params: { url: cleanUrl },
             headers: {
                 'x-rapidapi-key': RAPIDAPI_KEY,
                 'x-rapidapi-host': 'instagram-downloader-scraper-reels-igtv-posts-stories.p.rapidapi.com',
@@ -57,12 +60,23 @@ async function fetchSocialMediaMetadata(url) {
 
         const response = await axios.request(options);
         const data = response.data;
+        
+        console.log("RapidAPI Raw Data Snippet:", JSON.stringify(data).slice(0, 300));
 
         let textContent = "";
-        if (typeof data === 'object') {
-            textContent = data.caption || data.title || data.description || JSON.stringify(data);
-        } else if (typeof data === 'string') {
-            textContent = data;
+
+        if (data) {
+            if (typeof data === 'string') {
+                textContent = data;
+            } else if (typeof data === 'object') {
+                // Multi-field inspection to handle diverse API response structures
+                textContent = data.caption || 
+                              data.title || 
+                              data.description || 
+                              data.text || 
+                              (data.data && (data.data.caption || data.data.title || data.data.text)) || 
+                              '';
+            }
         }
 
         return textContent.trim();
