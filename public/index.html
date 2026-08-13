@@ -853,7 +853,7 @@
             
             <!-- File Sharing Site Link -->
             <li>
-                <a href="Airshare.markiv.site" target="_blank" rel="noopener">
+                <a href="https://Airshare.markiv.site" target="_blank" rel="noopener">
                     <i class="fa-solid fa-share-nodes"></i> File Sharing Platform
                     <span class="badge-new">NEW</span>
                 </a>
@@ -1042,7 +1042,8 @@
 
     <!-- JAVASCRIPT LOGIC -->
     <script>
-        const API_BASE_URL = 'https://quantum-aloe-rice.ngrok-free.app';
+        // RELATIVE BASE URL (Prevents CORS and Hardcoded Host issues)
+        const API_BASE_URL = '';
 
         let currentResult = null;
 
@@ -1269,51 +1270,50 @@
             document.getElementById('tldrText').innerText = data.tldr;
         }
 
-async function translateResults() {
-    if (!currentResult) return alert("No fact check result available to translate!");
+        async function translateResults() {
+            if (!currentResult) return alert("No fact check result available to translate!");
 
-    const targetLang = document.getElementById('targetLang').value;
-    const translateBtn = document.getElementById('translateBtn');
+            const targetLang = document.getElementById('targetLang').value;
+            const translateBtn = document.getElementById('translateBtn');
 
-    if (targetLang === 'English (Original)') {
-        renderResult(currentResult);
-        return;
-    }
+            if (targetLang === 'English (Original)') {
+                renderResult(currentResult);
+                return;
+            }
 
-    const originalBtnText = translateBtn.innerText;
-    translateBtn.innerText = "Translating...";
-    translateBtn.disabled = true;
+            const originalBtnText = translateBtn.innerText;
+            translateBtn.innerText = "Translating...";
+            translateBtn.disabled = true;
 
-    try {
-        const res = await fetch(`${API_BASE_URL}/api/translate`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                targetLang: targetLang,
-                factCheck: currentResult.factCheck || '',
-                theCatch: currentResult.theCatch || '',
-                tldr: currentResult.tldr || ''
-            })
-        });
+            try {
+                const res = await fetch(`${API_BASE_URL}/api/translate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        targetLang: targetLang,
+                        factCheck: currentResult.factCheck || '',
+                        theCatch: currentResult.theCatch || '',
+                        tldr: currentResult.tldr || ''
+                    })
+                });
 
-        const data = await res.json();
+                const data = await res.json();
 
-        if (res.ok && !data.error) {
-            document.getElementById('factCheckText').innerText = data.factCheck;
-            document.getElementById('theCatchText').innerText = data.theCatch;
-            document.getElementById('tldrText').innerText = data.tldr;
-        } else {
-            alert("Translation Server Error: " + (data.error || "Unknown server response"));
+                if (res.ok && !data.error) {
+                    document.getElementById('factCheckText').innerText = data.factCheck;
+                    document.getElementById('theCatchText').innerText = data.theCatch;
+                    document.getElementById('tldrText').innerText = data.tldr;
+                } else {
+                    alert("Translation Server Error: " + (data.error || "Unknown server response"));
+                }
+            } catch (err) {
+                console.error("Translation Fetch Error:", err);
+                alert("Network Error: Unable to reach translation endpoint. Ensure server is running.");
+            } finally {
+                translateBtn.innerText = originalBtnText;
+                translateBtn.disabled = false;
+            }
         }
-    } catch (err) {
-        console.error("Translation Fetch Error:", err);
-        alert("Network Error: Unable to reach translation endpoint. Ensure server is running.");
-    } finally {
-        translateBtn.innerText = originalBtnText;
-        translateBtn.disabled = false;
-    }
-}
-        
 
         function toggleChat() {
             document.getElementById('chatBox').classList.toggle('hidden');
