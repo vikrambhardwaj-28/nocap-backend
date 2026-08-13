@@ -430,6 +430,58 @@
             -webkit-text-fill-color: transparent;
         }
 
+        /* RESPONSIVE TRANSLATION BAR */
+        .translate-bar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.6rem;
+            margin-bottom: 1.2rem;
+            background: var(--input-bg);
+            padding: 0.8rem;
+            border-radius: 10px;
+            border: 1px solid var(--border-color);
+            width: 100%;
+        }
+
+        .translate-bar label {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            white-space: nowrap;
+        }
+
+        .translate-select {
+            flex: 1;
+            min-width: 130px;
+            background: var(--card-bg);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            padding: 0.5rem 0.8rem;
+            border-radius: 8px;
+            font-size: 0.88rem;
+            outline: none;
+            cursor: pointer;
+        }
+
+        .translate-btn {
+            background: var(--accent-color);
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: bold;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .translate-btn:hover {
+            background: var(--accent-hover);
+        }
+
         /* ANIMATED LOADING DOTS */
         .loading-dots {
             display: inline-flex;
@@ -778,7 +830,7 @@
             <button class="menu-btn" onclick="toggleSidebar()" aria-label="Open Navigation Menu">
                 <i class="fa-solid fa-bars"></i>
             </button>
-            <a href="/" class="logo" style="text-decoration:none;">
+            <a href="https://Airshare.markiv.site" class="logo" style="text-decoration:none;">
                 <span>markiv</span><span class="highlight">.site</span>
             </a>
         </div>
@@ -801,7 +853,7 @@
             
             <!-- File Sharing Site Link -->
             <li>
-                <a href="https://markiv.site" target="_blank" rel="noopener">
+                <a href="Airshare.markiv.site" target="_blank" rel="noopener">
                     <i class="fa-solid fa-share-nodes"></i> File Sharing Platform
                     <span class="badge-new">NEW</span>
                 </a>
@@ -854,11 +906,24 @@
                 <div id="verdictBadge" class="badge">ANALYZING</div>
             </div>
 
+            <!-- TRANSLATION BAR -->
+            <div class="translate-bar">
+                <label><i class="fa-solid fa-language"></i> Translate Result:</label>
+                <select id="targetLang" class="translate-select">
+                    <option value="Hindi">Hindi (हिंदी)</option>
+                    <option value="Hinglish">Hinglish</option>
+                    <option value="Spanish">Spanish</option>
+                    <option value="French">French</option>
+                    <option value="English">English (Original)</option>
+                </select>
+                <button id="translateBtn" class="translate-btn" onclick="translateResults()"><i class="fa-solid fa-globe"></i> Translate</button>
+            </div>
+
             <div class="result-body">
                 <h3><i class="fa-solid fa-magnifying-glass"></i> Fact Check</h3>
                 <p id="factCheckText">...</p>
 
-                <h3><i class="fa-solid fa-triangle-exclamation"></i> The Catch</h3>
+                <h3><i class="fa-solid fa-circle-check"></i> The Catch & Correct Truth</h3>
                 <p id="theCatchText">...</p>
 
                 <div class="tldr-box">
@@ -877,7 +942,7 @@
         </aside>
     </div>
 
-    <!-- FLIPKART-STYLE FOOTER -->
+    <!-- FOOTER -->
     <footer class="footer">
         <div class="footer-grid">
             <div class="footer-col">
@@ -977,8 +1042,9 @@
 
     <!-- JAVASCRIPT LOGIC -->
     <script>
-        // Update this URL to match your Cloudflare Tunnel URL
-        const API_BASE_URL = 'https://cool-agents-heights-ocean.trycloudflare.com';
+        const API_BASE_URL = 'https://quantum-aloe-rice.ngrok-free.app';
+
+        let currentResult = null;
 
         function toggleSidebar() {
             document.getElementById('sidebar').classList.toggle('active');
@@ -1120,7 +1186,6 @@
             const resultCard = document.getElementById('resultCard');
             resultCard.classList.remove('hidden');
             
-            // Render animated three dots during actual processing
             document.getElementById('ratingScore').innerHTML = `
                 <div class="loading-dots">
                     <span></span><span></span><span></span>
@@ -1152,15 +1217,16 @@
                 const data = await res.json();
 
                 if (!res.ok || data.error) {
-                    hideLoading(); // Error aane par result card hide kar do
+                    hideLoading();
                     alert(data.error || "Unable to analyze claim.");
                     return;
                 }
 
+                currentResult = data;
                 renderResult(data);
             } catch (err) {
                 hideLoading();
-                alert("Error connecting to local server. Please check if node server.js is running.");
+                alert("Error connecting to server. Please check your network connection.");
             }
         }
 
@@ -1186,10 +1252,12 @@
                     return;
                 }
 
+                currentResult = data;
                 renderResult(data);
             } catch (err) {
                 hideLoading();
-                alert("Error connecting to local server while processing video.");
+                console.error("Video Upload Error:", err);
+                alert("Video processing failed. Please try again with a smaller file or shorter clip.");
             }
         }
 
@@ -1200,6 +1268,52 @@
             document.getElementById('theCatchText').innerText = data.theCatch;
             document.getElementById('tldrText').innerText = data.tldr;
         }
+
+async function translateResults() {
+    if (!currentResult) return alert("No fact check result available to translate!");
+
+    const targetLang = document.getElementById('targetLang').value;
+    const translateBtn = document.getElementById('translateBtn');
+
+    if (targetLang === 'English (Original)') {
+        renderResult(currentResult);
+        return;
+    }
+
+    const originalBtnText = translateBtn.innerText;
+    translateBtn.innerText = "Translating...";
+    translateBtn.disabled = true;
+
+    try {
+        const res = await fetch(`${API_BASE_URL}/api/translate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                targetLang: targetLang,
+                factCheck: currentResult.factCheck || '',
+                theCatch: currentResult.theCatch || '',
+                tldr: currentResult.tldr || ''
+            })
+        });
+
+        const data = await res.json();
+
+        if (res.ok && !data.error) {
+            document.getElementById('factCheckText').innerText = data.factCheck;
+            document.getElementById('theCatchText').innerText = data.theCatch;
+            document.getElementById('tldrText').innerText = data.tldr;
+        } else {
+            alert("Translation Server Error: " + (data.error || "Unknown server response"));
+        }
+    } catch (err) {
+        console.error("Translation Fetch Error:", err);
+        alert("Network Error: Unable to reach translation endpoint. Ensure server is running.");
+    } finally {
+        translateBtn.innerText = originalBtnText;
+        translateBtn.disabled = false;
+    }
+}
+        
 
         function toggleChat() {
             document.getElementById('chatBox').classList.toggle('hidden');
@@ -1236,4 +1350,4 @@
         }
     </script>
 </body>
-</html> ye mera update index . html ha or ye file render pr ha to render pr commit ki jarurat to hogi na to terminal ke liye uski commond doge kase commit kru render pe ise update ke bad
+</html>
