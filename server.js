@@ -6,7 +6,7 @@ const path = require('path');
 const fs = require('fs');
 const { exec } = require('child_process');
 const axios = require('axios');
-const puppeteer = require('puppeteer');
+const cheerio = require('cheerio');
 const Groq = require('groq-sdk');
 const { extractAudio, transcribeAudio } = require('./audioService');
 
@@ -39,7 +39,7 @@ const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || 'fe1ae17be4msh6598cb25386ba06p1
 // HELPER FUNCTIONS
 // -------------------------------------------------------------
 
-// 1. RapidAPI Instagram / Social Media Extractor (Zero IP Blocking Solution)
+// 1. RapidAPI Extractor for Meta Links (Instagram / Facebook) -> Zero IP Block
 async function fetchSocialMediaMetadata(url) {
     try {
         console.log("Fetching content via RapidAPI (Bypassing IP Block)...");
@@ -52,13 +52,12 @@ async function fetchSocialMediaMetadata(url) {
                 'x-rapidapi-host': 'instagram-downloader-scraper-reels-igtv-posts-stories.p.rapidapi.com',
                 'Content-Type': 'application/json'
             },
-            timeout: 10000
+            timeout: 12000
         };
 
         const response = await axios.request(options);
         const data = response.data;
 
-        // Parse extracted title, caption, or description
         let textContent = "";
         if (typeof data === 'object') {
             textContent = data.caption || data.title || data.description || JSON.stringify(data);
@@ -84,38 +83,25 @@ function downloadAudioFromUrl(url, outputAudioPath) {
     });
 }
 
-// 3. Puppeteer Headless Scraper via Cloudflare Proxy (Websites/Articles)
-async function scrapeWithPuppeteer(url) {
-    let browser = null;
+// 3. Lightweight Article Scraper (Replaced Puppeteer for Render Cloud Compatibility)
+async function scrapeWebArticle(url) {
     try {
-        console.log("Launching Headless Browser via Cloudflare Proxy...");
-        browser = await puppeteer.launch({ 
-            headless: true,
-            args: ['--no-sandbox', '--disable-setuid-sandbox']
-        });
-        const page = await browser.newPage();
-        
-        const proxiedUrl = `${CLOUDFLARE_PROXY_URL}${encodeURIComponent(url)}`;
-        
-        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-        
-        await page.goto(proxiedUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
-        await new Promise(r => setTimeout(r, 2000));
-
-        const extractedText = await page.evaluate(() => {
-            const ogTitle = document.querySelector('meta[property="og:title"]')?.content || '';
-            const ogDesc = document.querySelector('meta[property="og:description"]')?.content || '';
-            const metaDesc = document.querySelector('meta[name="description"]')?.content || '';
-            const bodyText = document.body.innerText || '';
-
-            return `${ogTitle}\n${ogDesc}\n${metaDesc}\n${bodyText}`.slice(0, 3000);
+        console.log("Fetching web page via Axios + Cheerio...");
+        const response = await axios.get(`${CLOUDFLARE_PROXY_URL}${encodeURIComponent(url)}`, {
+            timeout: 10000,
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
         });
 
-        await browser.close();
-        return extractedText.trim();
+        const $ = cheerio.load(response.data);
+        const ogTitle = $('meta[property="og:title"]').attr('content') || $('title').text() || '';
+        const ogDesc = $('meta[property="og:description"]').attr('content') || $('meta[name="description"]').attr('content') || '';
+        const bodyText = $('body').text().replace(/\s+/g, ' ').slice(0, 2500);
+
+        return `${ogTitle}\n${ogDesc}\n${bodyText}`.trim();
     } catch (err) {
-        console.error("Puppeteer Scraping Failed:", err.message);
-        if (browser) await browser.close();
+        console.error("Cheerio Scraping Failed:", err.message);
         return null;
     }
 }
@@ -135,50 +121,56 @@ app.post('/api/check-text', async (req, res) => {
 
     if (isUrl) {
         console.log("Processing URL input:", cleanInput);
-        const isInstagramOrFB = /instagram\.com|facebook\.com|fb\.watch/i.test(cleanInput);
 
-        // STRATEGY 1: Instagram / Facebook links -> RapidAPI (Fast & No IP Block)
-        if (isInstagramOrFB) {
-            console.log("Detected Social Media Link. Using RapidAPI Extractor...");
+        const isMetaLink = /instagram\.com|facebook\.com|fb\.watch/i.test(cleanInput);
+        const isYouTubeLink = /youtube\.com|youtu\.be/i.test(cleanInput);
+
+        // ROUTE 1: Instagram & Facebook -> RapidAPI
+        if (isMetaLink) {
+            console.log("Detected Meta Link (Insta/FB). Extracting via RapidAPI...");
             const socialContent = await fetchSocialMediaMetadata(cleanInput);
             if (socialContent && socialContent.length > 5) {
                 transcript = socialContent;
-                console.log("Successfully retrieved social media caption/text via RapidAPI.");
+            } else {
+                return res.status(400).json({ 
+                    error: 'Unable to extract link. Post may be private or protected.' 
+                });
             }
-        }
-
-        // STRATEGY 2: If RapidAPI wasn't used or returned empty -> Try yt-dlp Audio Download (YouTube/TikTok)
-        if (transcript === cleanInput) {
-            const audioFilename = `link_${Date.now()}.mp3`;
+        } 
+        // ROUTE 2: YouTube -> Audio Download + Speech Transcription
+        else if (isYouTubeLink) {
+            console.log("Detected YouTube Link. Downloading audio & transcribing...");
+            const audioFilename = `yt_${Date.now()}.mp3`;
             const audioPath = path.join('uploads', audioFilename);
 
             try {
-                console.log("Attempting yt-dlp audio extraction...");
                 await downloadAudioFromUrl(cleanInput, audioPath);
                 transcript = await transcribeAudio(audioPath);
-                console.log("Audio transcript received from yt-dlp.");
                 if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
-            } catch (videoErr) {
-                console.log("yt-dlp failed/blocked. Trying Puppeteer Proxy Fallback...");
+            } catch (ytErr) {
                 if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
-
-                // STRATEGY 3: Puppeteer Web Scraping Fallback
-                const puppeteerText = await scrapeWithPuppeteer(cleanInput);
-                if (puppeteerText && puppeteerText.length > 20) {
-                    transcript = puppeteerText;
-                    console.log("Puppeteer extracted page content successfully.");
-                } else {
-                    return res.status(400).json({ 
-                        error: 'Unable to extract link content. Post might be private or blocked. Please paste text directly!' 
-                    });
-                }
+                return res.status(400).json({ 
+                    error: 'Failed to transcribe YouTube audio.' 
+                });
+            }
+        } 
+        // ROUTE 3: General Websites / Articles -> Cheerio Proxy Scraper
+        else {
+            console.log("Detected General Web Article. Scraping content...");
+            const articleText = await scrapeWebArticle(cleanInput);
+            if (articleText && articleText.length > 20) {
+                transcript = articleText;
+            } else {
+                return res.status(400).json({ 
+                    error: 'Unable to scrape website text. Please copy-paste the text content directly!' 
+                });
             }
         }
     }
 
     // AI Analysis with Groq
     try {
-        console.log("Analyzing content with Groq...");
+        console.log("Analyzing claim with Groq AI...");
         const completion = await groq.chat.completions.create({
             messages: [
                 {
@@ -230,10 +222,7 @@ app.post('/api/check-video', upload.single('video'), async (req, res) => {
     const audioPath = path.join('uploads', `${req.file.filename}.mp3`);
 
     try {
-        console.log("Extracting audio from uploaded video...");
         await extractAudio(videoPath, audioPath);
-        
-        console.log("Transcribing audio...");
         const transcript = await transcribeAudio(audioPath);
 
         if (fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
@@ -243,7 +232,6 @@ app.post('/api/check-video', upload.single('video'), async (req, res) => {
             return res.status(400).json({ error: 'No speech detected in video.' });
         }
 
-        console.log("Analyzing video transcript with Groq...");
         const completion = await groq.chat.completions.create({
             messages: [
                 {
@@ -287,7 +275,7 @@ RATING RUBRIC:
 });
 
 // -------------------------------------------------------------
-// 3. AI TRANSLATION ENDPOINT (CRASH-PROOF)
+// 3. AI TRANSLATION ENDPOINT
 // -------------------------------------------------------------
 app.post('/api/translate', async (req, res) => {
     try {
@@ -296,8 +284,6 @@ app.post('/api/translate', async (req, res) => {
         if (!targetLang || !factCheck) {
             return res.status(400).json({ error: 'Missing translation text or language.' });
         }
-
-        console.log(`[TRANSLATE] Translating to: ${targetLang}`);
 
         const safeFactCheck = String(factCheck || '').replace(/["']/g, '');
         const safeTheCatch = String(theCatch || '').replace(/["']/g, '');
