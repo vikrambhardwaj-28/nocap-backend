@@ -12,78 +12,108 @@ const { extractAudio, transcribeAudio } = require('./audioService');
 
 const app = express();
 
-// Middleware
+// Middleware Configuration
 app.use(express.json());
 app.use(cors());
 app.use(express.static('public'));
 
+// Ensure uploads folder exists
 if (!fs.existsSync('uploads')) {
     fs.mkdirSync('uploads');
 }
 
-// Multer configured with 100MB limit for video uploads
+// Multer Configured for Video Uploads (100MB Limit)
 const upload = multer({ 
     dest: 'uploads/',
     limits: { fileSize: 100 * 1024 * 1024 }
 });
 
+// Initialize Groq AI Client
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-// CLOUDFLARE WORKER PROXY CONFIGURATION
+// Cloudflare Proxy Fallback Configuration
 const CLOUDFLARE_PROXY_URL = 'https://nocap-proxy.vikram-2872006.workers.dev?url=';
 
-// RAPIDAPI KEY (Fallback if not in .env)
-const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || 'fe1ae17be4msh6598cb25386ba06p16a032jsnbf401f5e081a';
+// =============================================================
+// HELPER FUNCTIONS (100% FREE PIPELINE)
+// =============================================================
 
-// -------------------------------------------------------------
-// HELPER FUNCTIONS
-// -------------------------------------------------------------
-
-// 1. RapidAPI Extractor for Meta Links (Instagram / Facebook) -> Zero IP Block
+// 1. Social Media Meta Extractor (Instagram / Facebook - No API Key, No 403 Block)
 async function fetchSocialMediaMetadata(url) {
+    const cleanUrl = url.split('?')[0].replace(/\/$/, "");
+    console.log("Processing Meta Link (Free Pipeline):", cleanUrl);
+
+    // METHOD 1: Instagram Embed Page Scraping (Fastest & 100% Free)
     try {
-        // Clean tracking parameters (?igsh=..., ?utm_source=...)
-        const cleanUrl = url.split('?')[0];
-        console.log("Fetching clean Meta URL via RapidAPI:", cleanUrl);
-
-        const options = {
-            method: 'GET',
-            url: 'https://instagram-downloader-scraper-reels-igtv-posts-stories.p.rapidapi.com/scraper',
-            params: { url: cleanUrl },
-            headers: {
-                'x-rapidapi-key': RAPIDAPI_KEY,
-                'x-rapidapi-host': 'instagram-downloader-scraper-reels-igtv-posts-stories.p.rapidapi.com',
-                'Content-Type': 'application/json'
-            },
-            timeout: 12000
-        };
-
-        const response = await axios.request(options);
-        const data = response.data;
+        console.log("Attempt 1: Scraping Instagram Embed Page...");
+        const embedUrl = `${cleanUrl}/embed/captioned/`;
         
-        console.log("RapidAPI Raw Data Snippet:", JSON.stringify(data).slice(0, 300));
+        const embedRes = await axios.get(embedUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1'
+            },
+            timeout: 8000
+        });
 
-        let textContent = "";
+        const $ = cheerio.load(embedRes.data);
+        
+        let caption = $('.Caption').text() || $('.CaptionComments').text() || $('meta[property="og:title"]').attr('content') || '';
+        caption = caption.replace(/\s+/g, ' ').trim();
 
-        if (data) {
-            if (typeof data === 'string') {
-                textContent = data;
-            } else if (typeof data === 'object') {
-                // Multi-field inspection to handle diverse API response structures
-                textContent = data.caption || 
-                              data.title || 
-                              data.description || 
-                              data.text || 
-                              (data.data && (data.data.caption || data.data.title || data.data.text)) || 
-                              '';
-            }
+        if (caption.length > 5) {
+            console.log("SUCCESS via Instagram Embed Scraper!");
+            return caption;
         }
-
-        return textContent.trim();
     } catch (err) {
-        console.error("RapidAPI Extraction Error:", err.message);
-        return null;
+        console.log("Embed method skipped, trying Cobalt Open-Source Engine...");
     }
+
+    // METHOD 2: Cobalt Open-Source API (Free Community Service)
+    try {
+        console.log("Attempt 2: Fetching via Open-Source Cobalt Engine...");
+        const response = await axios.post('https://api.cobalt.tools/api/json', {
+            url: cleanUrl
+        }, {
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+            },
+            timeout: 10000
+        });
+
+        if (response.data && (response.data.text || response.data.filename)) {
+            const extractedText = response.data.text || response.data.filename;
+            console.log("SUCCESS via Cobalt API!");
+            return extractedText.trim();
+        }
+    } catch (cobaltErr) {
+        console.error("Cobalt Engine Fallback Error:", cobaltErr.message);
+    }
+
+    // METHOD 3: Open Graph Meta Tag Scraping via Cloudflare Proxy
+    try {
+        console.log("Attempt 3: Direct Meta Tag Proxy Scraping...");
+        const metaRes = await axios.get(`${CLOUDFLARE_PROXY_URL}${encodeURIComponent(cleanUrl)}`, {
+            timeout: 8000,
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+        });
+        const $ = cheerio.load(metaRes.data);
+        const title = $('meta[property="og:title"]').attr('content') || $('title').text() || '';
+        const desc = $('meta[property="og:description"]').attr('content') || '';
+
+        const combined = `${title} ${desc}`.trim();
+        if (combined.length > 5) {
+            console.log("SUCCESS via Proxy Meta Tags!");
+            return combined;
+        }
+    } catch (metaErr) {
+        console.error("Meta Tag Scraping Error:", metaErr.message);
+    }
+
+    return null;
 }
 
 // 2. Video Audio Downloader (yt-dlp for YouTube)
@@ -97,10 +127,10 @@ function downloadAudioFromUrl(url, outputAudioPath) {
     });
 }
 
-// 3. Lightweight Article Scraper (Replaced Puppeteer for Render Cloud Compatibility)
+// 3. Lightweight Article Scraper (Cheerio for Cloud Deployments)
 async function scrapeWebArticle(url) {
     try {
-        console.log("Fetching web page via Axios + Cheerio...");
+        console.log("Fetching Web Page via Axios + Cheerio...");
         const response = await axios.get(`${CLOUDFLARE_PROXY_URL}${encodeURIComponent(url)}`, {
             timeout: 10000,
             headers: {
@@ -115,14 +145,14 @@ async function scrapeWebArticle(url) {
 
         return `${ogTitle}\n${ogDesc}\n${bodyText}`.trim();
     } catch (err) {
-        console.error("Cheerio Scraping Failed:", err.message);
+        console.error("Cheerio Web Scraping Failed:", err.message);
         return null;
     }
 }
 
-// -------------------------------------------------------------
+// =============================================================
 // 1. TEXT, LINK & ARTICLE FACT-CHECK ENDPOINT
-// -------------------------------------------------------------
+// =============================================================
 app.post('/api/check-text', async (req, res) => {
     const { text } = req.body;
     if (!text) {
@@ -134,49 +164,51 @@ app.post('/api/check-text', async (req, res) => {
     let transcript = cleanInput;
 
     if (isUrl) {
-        console.log("Processing URL input:", cleanInput);
+        console.log("Processing URL Input:", cleanInput);
 
         const isMetaLink = /instagram\.com|facebook\.com|fb\.watch/i.test(cleanInput);
         const isYouTubeLink = /youtube\.com|youtu\.be/i.test(cleanInput);
 
-        // ROUTE 1: Instagram & Facebook -> RapidAPI
+        // ROUTE 1: INSTAGRAM & FACEBOOK LINKS
         if (isMetaLink) {
-            console.log("Detected Meta Link (Insta/FB). Extracting via RapidAPI...");
+            console.log("Detected Instagram/Facebook Link...");
             const socialContent = await fetchSocialMediaMetadata(cleanInput);
             if (socialContent && socialContent.length > 5) {
                 transcript = socialContent;
             } else {
                 return res.status(400).json({ 
-                    error: 'Unable to extract link. Post may be private or protected.' 
+                    error: 'Unable to extract content. The post might be private or protected. Try pasting the text directly!' 
                 });
             }
         } 
-        // ROUTE 2: YouTube -> Audio Download + Speech Transcription
+        // ROUTE 2: YOUTUBE LINKS
         else if (isYouTubeLink) {
-            console.log("Detected YouTube Link. Downloading audio & transcribing...");
+            console.log("Detected YouTube Link. Extracting Audio & Transcribing Speech...");
             const audioFilename = `yt_${Date.now()}.mp3`;
             const audioPath = path.join('uploads', audioFilename);
 
             try {
                 await downloadAudioFromUrl(cleanInput, audioPath);
                 transcript = await transcribeAudio(audioPath);
+                console.log("Successfully Transcribed YouTube Audio.");
                 if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
             } catch (ytErr) {
+                console.error("YouTube Extraction Failed:", ytErr.message);
                 if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
                 return res.status(400).json({ 
-                    error: 'Failed to transcribe YouTube audio.' 
+                    error: 'Failed to extract or transcribe YouTube audio. Video might be restricted.' 
                 });
             }
         } 
-        // ROUTE 3: General Websites / Articles -> Cheerio Proxy Scraper
+        // ROUTE 3: WEBSITES & ARTICLES
         else {
-            console.log("Detected General Web Article. Scraping content...");
+            console.log("Detected General Web Article...");
             const articleText = await scrapeWebArticle(cleanInput);
             if (articleText && articleText.length > 20) {
                 transcript = articleText;
             } else {
                 return res.status(400).json({ 
-                    error: 'Unable to scrape website text. Please copy-paste the text content directly!' 
+                    error: 'Unable to scrape website content. Please copy-paste the claim or text directly!' 
                 });
             }
         }
@@ -184,7 +216,7 @@ app.post('/api/check-text', async (req, res) => {
 
     // AI Analysis with Groq
     try {
-        console.log("Analyzing claim with Groq AI...");
+        console.log("Analyzing Claim Content with Groq AI...");
         const completion = await groq.chat.completions.create({
             messages: [
                 {
@@ -220,13 +252,13 @@ RATING RUBRIC:
 
     } catch (err) {
         console.error("GROQ ANALYSIS ERROR:", err);
-        res.status(500).json({ error: err.message || 'Groq analysis failed.' });
+        res.status(500).json({ error: err.message || 'Groq AI analysis failed.' });
     }
 });
 
-// -------------------------------------------------------------
+// =============================================================
 // 2. VIDEO FILE UPLOAD ENDPOINT
-// -------------------------------------------------------------
+// =============================================================
 app.post('/api/check-video', upload.single('video'), async (req, res) => {
     if (!req.file) {
         return res.status(400).json({ error: 'No video file provided.' });
@@ -236,16 +268,20 @@ app.post('/api/check-video', upload.single('video'), async (req, res) => {
     const audioPath = path.join('uploads', `${req.file.filename}.mp3`);
 
     try {
+        console.log("Extracting audio from uploaded video...");
         await extractAudio(videoPath, audioPath);
+        
+        console.log("Transcribing extracted audio...");
         const transcript = await transcribeAudio(audioPath);
 
         if (fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
         if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
 
         if (!transcript || transcript.trim().length === 0) {
-            return res.status(400).json({ error: 'No speech detected in video.' });
+            return res.status(400).json({ error: 'No speech detected in uploaded video.' });
         }
 
+        console.log("Analyzing transcript with Groq AI...");
         const completion = await groq.chat.completions.create({
             messages: [
                 {
@@ -284,20 +320,22 @@ RATING RUBRIC:
         if (fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
         if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
 
-        res.status(500).json({ error: err.message || 'Video analysis failed.' });
+        res.status(500).json({ error: err.message || 'Video processing failed.' });
     }
 });
 
-// -------------------------------------------------------------
+// =============================================================
 // 3. AI TRANSLATION ENDPOINT
-// -------------------------------------------------------------
+// =============================================================
 app.post('/api/translate', async (req, res) => {
     try {
         const { targetLang, factCheck, theCatch, tldr } = req.body;
 
         if (!targetLang || !factCheck) {
-            return res.status(400).json({ error: 'Missing translation text or language.' });
+            return res.status(400).json({ error: 'Missing target language or fact-check content.' });
         }
+
+        console.log(`[TRANSLATE] Translating result to: ${targetLang}`);
 
         const safeFactCheck = String(factCheck || '').replace(/["']/g, '');
         const safeTheCatch = String(theCatch || '').replace(/["']/g, '');
@@ -337,7 +375,7 @@ app.post('/api/translate', async (req, res) => {
         return res.json(parsedData);
 
     } catch (err) {
-        console.error("[TRANSLATION SERVER ERROR]:", err.message);
+        console.error("[TRANSLATION ERROR]:", err.message);
         return res.status(500).json({ 
             error: "Translation failed on server", 
             details: err.message 
@@ -345,9 +383,9 @@ app.post('/api/translate', async (req, res) => {
     }
 });
 
-// -------------------------------------------------------------
+// =============================================================
 // 4. AI CHATBOT ASSISTANT ENDPOINT
-// -------------------------------------------------------------
+// =============================================================
 app.post('/api/chat-assistant', async (req, res) => {
     const { message, mode } = req.body;
     
@@ -379,9 +417,9 @@ app.post('/api/chat-assistant', async (req, res) => {
     }
 });
 
-// -------------------------------------------------------------
-// SERVER LISTENER & GLOBAL CRASH PREVENTION
-// -------------------------------------------------------------
+// =============================================================
+// SERVER LISTENER & CRASH PROTECTION
+// =============================================================
 const PORT = process.env.PORT || 5001;
 
 const server = app.listen(PORT, '0.0.0.0', () => {
