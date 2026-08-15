@@ -1,5 +1,6 @@
 require('dotenv').config();
 const express = require('express');
+const Tesseract = require('tesseract.js');
 const cors = require('cors');
 const multer = require('multer');
 const path = require('path');
@@ -260,7 +261,7 @@ RATING RUBRIC:
 });
 
 // =============================================================
-// 3. IMAGE / SCREENSHOT FACT-CHECK ENDPOINT (UPDATED VISION MODEL)
+// 3. IMAGE / SCREENSHOT FACT-CHECK ENDPOINT (CRASH-PROOF OCR)
 // =============================================================
 app.post('/api/check-image', upload.single('image'), async (req, res) => {
     if (!req.file) {
@@ -270,20 +271,25 @@ app.post('/api/check-image', upload.single('image'), async (req, res) => {
     const imagePath = req.file.path;
 
     try {
-        console.log("Processing uploaded image for text extraction & fact-check...");
-        const imageBuffer = fs.readFileSync(imagePath);
-        const base64Image = imageBuffer.toString('base64');
-        const mimeType = req.file.mimetype || 'image/jpeg';
+        console.log("Extracting text from image via OCR...");
+        const { data: { text } } = await Tesseract.recognize(imagePath, 'eng+hin');
 
-        console.log("Analyzing image via Groq Vision AI...");
+        if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
+
+        const extractedText = text.trim();
+        if (!extractedText || extractedText.length < 5) {
+            return res.status(400).json({ error: 'No readable text or claim found in the uploaded image.' });
+        }
+
+        console.log("OCR Extracted Text:", extractedText.slice(0, 100) + "...");
+        console.log("Analyzing extracted claim via Groq AI...");
+
         const completion = await groq.chat.completions.create({
             messages: [
                 {
                     role: "system",
-                    content: `You are NoCap.dev, a Gen-Z viral fact-checker. 
-Read the text, headline, meme, or claim shown in this image, extract the claim, and fact-check it with 100% precision. 
-Respond ONLY with valid JSON.
-
+                    content: `You are NoCap.dev, a Gen-Z viral fact-checker. Respond ONLY with valid JSON.
+                    
 RATING RUBRIC:
 - 9 to 10 (NO CAP): 100% Factually verified, scientifically sound, no missing context.
 - 5 to 8 (PARTIAL CAP): Mixed truth, clickbait exaggeration, or crucial context omitted.
@@ -291,39 +297,25 @@ RATING RUBRIC:
                 },
                 {
                     role: "user",
-                    content: [
-                        {
-                            type: "text",
-                            text: `Extract the text/claim from this image and fact-check it.
-                            
-Return strict JSON schema:
-{
-  "rating": number (1 to 10),
-  "verdict": "NO CAP 🧢" | "PARTIAL CAP 🧢🧢" | "TOTAL CAP 🧢🧢🧢",
-  "factCheck": "Direct factual assessment of the text/claim written on the image",
-  "theCatch": "Explain missing context or exaggeration AND explicitly state the CORRECT RIGHT ANSWER/FACT here.",
-  "tldr": "Exactly 2 sentences summarizing the reality",
-  "extractedText": "The actual text read from the image"
-}`
-                        },
-                        {
-                            type: "image_url",
-                            image_url: {
-                                url: `data:${mimeType};base64,${base64Image}`
-                            }
-                        }
-                    ]
+                    content: `Analyze this content/claim found in an image: "${extractedText}"
+                    
+                    Return strict JSON schema:
+                    {
+                      "rating": number (1 to 10),
+                      "verdict": "NO CAP 🧢" | "PARTIAL CAP 🧢🧢" | "TOTAL CAP 🧢🧢🧢",
+                      "factCheck": "Direct factual assessment of claims made",
+                      "theCatch": "Explain missing context or exaggeration AND explicitly state the CORRECT RIGHT ANSWER/FACT here.",
+                      "tldr": "Exactly 2 sentences summarizing the reality"
+                    }`
                 }
             ],
-            model: "meta-llama/llama-4-scenic-instruct",
+            model: "llama-3.3-70b-versatile",
             response_format: { type: "json_object" },
             temperature: 0.2
         });
 
-        if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
-
         const jsonResult = JSON.parse(completion.choices[0].message.content);
-        res.json({ ...jsonResult, transcript: jsonResult.extractedText });
+        res.json({ ...jsonResult, transcript: extractedText });
 
     } catch (err) {
         console.error("IMAGE ANALYSIS ERROR:", err);
