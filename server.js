@@ -1,6 +1,5 @@
 require('dotenv').config();
 const express = require('express');
-const Tesseract = require('tesseract.js');
 const cors = require('cors');
 const multer = require('multer');
 const path = require('path');
@@ -8,6 +7,9 @@ const fs = require('fs');
 const { exec } = require('child_process');
 const axios = require('axios');
 const Groq = require('groq-sdk');
+const { GoogleGenAI } = require('@google/genai');
+const { Mistral } = require('@mistralai/mistralai');
+const Tesseract = require('tesseract.js');
 const ffmpegPath = require('ffmpeg-static');
 const { extractAudio, transcribeAudio } = require('./audioService');
 
@@ -28,7 +30,143 @@ const upload = multer({
     limits: { fileSize: 100 * 1024 * 1024 }
 });
 
+// Initialize Multi-AI Clients
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const mistral = new Mistral({ apiKey: process.env.MISTRAL_API_KEY });
+
+const PROMPT_TEMPLATE = (claim) => `You are an elite investigative fact-checker. 
+Do NOT rely merely on viral popularity or surface-level claims. Perform deep, rigorous verification focused on primary evidence, scientific data, and logical consistency.
+
+CLAIM TO VERIFY: "${claim}"
+
+RATING RUBRIC:
+- 9 to 10 (NO CAP): 100% Factually verified, scientifically sound, zero missing context.
+- 5 to 8 (PARTIAL CAP): Mixed truth, clickbait exaggeration, misleading stats, or critical context omitted.
+- 1 to 4 (TOTAL CAP): Debunked myth, fake news, manipulated media, or harmful propaganda.
+
+Return strict JSON schema only:
+{
+  "rating": number (1 to 10),
+  "verdict": "NO CAP 🧢" | "PARTIAL CAP 🧢🧢" | "TOTAL CAP 🧢🧢🧢",
+  "factCheck": "Deep investigative factual assessment exposing why the claim is true or false.",
+  "theCatch": "Explicitly identify the distortion, missing context, and state the objective verified truth.",
+  "tldr": "Exactly 2 concise sentences summarizing the reality."
+}`;
+
+// =============================================================
+// MULTI-AGENT ENSEMBLE ENGINE (GROQ + GEMINI + MISTRAL + TIMEOUT GUARD)
+// =============================================================
+async function analyzeWithMultiAgent(claimText) {
+    console.log("[MULTI-AGENT] Initiating deep verification across Groq, Gemini & Mistral...");
+
+    // Helper: 4.5 सेकंड का सख्त टाइमआउट (ताकि यूजर को इंतज़ार न करना पड़े)
+    const withTimeout = (promise, agentName, ms = 4500) => {
+        const timeout = new Promise((resolve) =>
+            setTimeout(() => {
+                console.warn(`[TIMEOUT] ${agentName} took too long (> ${ms}ms). Skipping to prevent delay.`);
+                resolve(null);
+            }, ms)
+        );
+        return Promise.race([promise, timeout]);
+    };
+
+    // Agent 1: Groq (LLaMA 3.3 70B)
+    const runGroq = async () => {
+        try {
+            const completion = await groq.chat.completions.create({
+                messages: [
+                    { role: "system", content: "You are an objective fact-checking engine. Output strict JSON only." },
+                    { role: "user", content: PROMPT_TEMPLATE(claimText) }
+                ],
+                model: "llama-3.3-70b-versatile",
+                response_format: { type: "json_object" },
+                temperature: 0.1
+            });
+            return JSON.parse(completion.choices[0].message.content);
+        } catch (e) {
+            console.error("[AGENT GROQ ERROR]:", e.message);
+            return null;
+        }
+    };
+
+    // Agent 2: Google Gemini (2.5 Flash)
+    const runGemini = async () => {
+        try {
+            const response = await ai.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: PROMPT_TEMPLATE(claimText),
+                config: { responseMimeType: 'application/json' }
+            });
+            return JSON.parse(response.text);
+        } catch (e) {
+            console.error("[AGENT GEMINI ERROR]:", e.message);
+            return null;
+        }
+    };
+
+    // Agent 3: Mistral AI (Large Latest)
+    const runMistral = async () => {
+        try {
+            const response = await mistral.chat.complete({
+                model: "mistral-large-latest",
+                messages: [
+                    { role: "system", content: "You are an objective fact-checking engine. Output strict JSON only." },
+                    { role: "user", content: PROMPT_TEMPLATE(claimText) }
+                ],
+                responseFormat: { type: "json_object" },
+                temperature: 0.1
+            });
+            return JSON.parse(response.choices[0].message.content);
+        } catch (e) {
+            console.error("[AGENT MISTRAL ERROR]:", e.message);
+            return null;
+        }
+    };
+
+    // तीनों एजेंट्स को एक साथ पैरेलल चलाएँ (4.5s Timeout Guard के साथ)
+    const [resGroq, resGemini, resMistral] = await Promise.all([
+        withTimeout(runGroq(), "Groq"),
+        withTimeout(runGemini(), "Gemini"),
+        withTimeout(runMistral(), "Mistral")
+    ]);
+
+    // जो-जो एजेंट्स समय पर सही रिस्पॉन्स देंगे, उन्हें फ़िल्टर करें
+    const validResults = [resGroq, resGemini, resMistral].filter(
+        (r) => r && typeof r.rating === 'number'
+    );
+
+    console.log(`[CONSENSUS] Received responses from ${validResults.length} / 3 AI agents.`);
+
+    // इमरजेंसी फ़ॉलबैक (यदि सभी टाइमआउट हो जाएँ)
+    if (validResults.length === 0) {
+        console.log("[FALLBACK] All agents timed out. Running emergency single call...");
+        const fallback = await runGroq();
+        if (!fallback) throw new Error("Fact check service is temporarily busy. Please try again.");
+        validResults.push(fallback);
+    }
+
+    // समय पर आए सभी एजेंट्स के स्कोर्स का सही औसत (Consensus Average)
+    const avgRating = Math.round(
+        validResults.reduce((acc, curr) => acc + curr.rating, 0) / validResults.length
+    );
+
+    let consensusVerdict = "NO CAP 🧢";
+    if (avgRating <= 4) consensusVerdict = "TOTAL CAP 🧢🧢🧢";
+    else if (avgRating <= 8) consensusVerdict = "PARTIAL CAP 🧢🧢";
+
+    // जो भी सबसे विस्तृत रिपोर्ट उपलब्ध हो, उसका विवरण लें
+    const primaryReport = resGroq || resGemini || resMistral || validResults[0];
+
+    return {
+        rating: avgRating,
+        verdict: consensusVerdict,
+        factCheck: primaryReport.factCheck,
+        theCatch: primaryReport.theCatch,
+        tldr: primaryReport.tldr,
+        agentsParticipated: validResults.length
+    };
+}
 
 // =============================================================
 // UNIFIED AUDIO DOWNLOADER ENGINE (yt-dlp + Cobalt Streamer)
@@ -36,7 +174,7 @@ const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 async function downloadAudioFromUrl(url, outputAudioPath) {
     const cleanUrl = url.trim();
 
-    // METHOD 1: Try local yt-dlp audio download
+    // METHOD 1: Local yt-dlp audio download
     try {
         console.log("[AUDIO] Attempt 1: Downloading audio with yt-dlp...");
         await new Promise((resolve, reject) => {
@@ -54,10 +192,10 @@ async function downloadAudioFromUrl(url, outputAudioPath) {
             return outputAudioPath;
         }
     } catch (ytErr) {
-        console.log("[AUDIO] yt-dlp failed (Datacenter IP Block). Switching to Cobalt Audio Streamer...");
+        console.log("[AUDIO] yt-dlp failed. Switching to Cobalt Audio Streamer...");
     }
 
-    // METHOD 2: Cobalt API (Bypasses Render IP block & fetches direct MP3 file)
+    // METHOD 2: Cobalt API Streamer
     try {
         console.log("[AUDIO] Attempt 2: Downloading MP3 stream via Cobalt Engine...");
         const response = await axios.post('https://api.cobalt.tools/api/json', {
@@ -102,7 +240,7 @@ async function downloadAudioFromUrl(url, outputAudioPath) {
 }
 
 // =============================================================
-// 1. UNIFIED URL & TEXT FACT-CHECK ENDPOINT
+// 1. TEXT / LINK FACT-CHECK ENDPOINT
 // =============================================================
 app.post('/api/check-text', async (req, res) => {
     const { text } = req.body;
@@ -149,51 +287,55 @@ app.post('/api/check-text', async (req, res) => {
     }
 
     try {
-        console.log("Step 3: Analyzing Transcribed Speech via Groq AI...");
-        const completion = await groq.chat.completions.create({
-            messages: [
-                {
-                    role: "system",
-                    content: `You are NoCap.dev, a Gen-Z viral fact-checker. Respond ONLY with valid JSON.
-                    
-RATING RUBRIC:
-- 9 to 10 (NO CAP): 100% Factually verified, scientifically sound, no missing context.
-- 5 to 8 (PARTIAL CAP): Mixed truth, clickbait exaggeration, or crucial context omitted.
-- 1 to 4 (TOTAL CAP): Debunked myth, fake news, blatantly false or dangerous misinfo.`
-                },
-                {
-                    role: "user",
-                    content: `Analyze this content/claim transcript: "${transcript}"
-                    
-                    Return strict JSON schema:
-                    {
-                      "rating": number (1 to 10),
-                      "verdict": "NO CAP 🧢" | "PARTIAL CAP 🧢🧢" | "TOTAL CAP 🧢🧢🧢",
-                      "factCheck": "Direct factual assessment of claims made",
-                      "theCatch": "Explain missing context or exaggeration AND explicitly state the CORRECT RIGHT ANSWER/FACT here.",
-                      "tldr": "Exactly 2 sentences summarizing the reality"
-                    }`
-                }
-            ],
-            model: "llama-3.3-70b-versatile",
-            response_format: { type: "json_object" },
-            temperature: 0.2
-        });
-
-        const jsonResult = JSON.parse(completion.choices[0].message.content);
+        console.log("Step 3: Analyzing via Multi-Agent Ensemble...");
+        const result = await analyzeWithMultiAgent(transcript);
         console.log("Step 3 Completed successfully.");
         console.log("--------------------------------------------------");
 
-        res.json({ ...jsonResult, transcript: isUrl ? transcript : undefined });
+        res.json({ ...result, transcript: isUrl ? transcript : undefined });
 
     } catch (err) {
-        console.error("GROQ ANALYSIS ERROR:", err);
-        res.status(500).json({ error: err.message || 'Groq AI analysis failed.' });
+        console.error("ANALYSIS ERROR:", err);
+        res.status(500).json({ error: err.message || 'Multi-Agent analysis failed.' });
     }
 });
 
 // =============================================================
-// 2. DIRECT VIDEO FILE UPLOAD ENDPOINT
+// 2. IMAGE / SCREENSHOT FACT-CHECK ENDPOINT (TESSERACT OCR)
+// =============================================================
+app.post('/api/check-image', upload.single('image'), async (req, res) => {
+    if (!req.file) {
+        return res.status(400).json({ error: 'No image file provided.' });
+    }
+
+    const imagePath = req.file.path;
+
+    try {
+        console.log("Extracting text from image via OCR...");
+        const { data: { text } } = await Tesseract.recognize(imagePath, 'eng+hin');
+
+        if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
+
+        const extractedText = text.trim();
+        if (!extractedText || extractedText.length < 5) {
+            return res.status(400).json({ error: 'No readable text or claim found in the uploaded image.' });
+        }
+
+        console.log("OCR Extracted Text:", extractedText.slice(0, 100) + "...");
+        console.log("Analyzing extracted claim via Multi-Agent Ensemble...");
+
+        const result = await analyzeWithMultiAgent(extractedText);
+        res.json({ ...result, transcript: extractedText });
+
+    } catch (err) {
+        console.error("IMAGE ANALYSIS ERROR:", err);
+        if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
+        res.status(500).json({ error: err.message || 'Image analysis failed.' });
+    }
+});
+
+// =============================================================
+// 3. DIRECT VIDEO FILE UPLOAD ENDPOINT
 // =============================================================
 app.post('/api/check-video', upload.single('video'), async (req, res) => {
     if (!req.file) {
@@ -217,39 +359,9 @@ app.post('/api/check-video', upload.single('video'), async (req, res) => {
             return res.status(400).json({ error: 'No speech detected in uploaded video.' });
         }
 
-        console.log("Analyzing transcript with Groq AI...");
-        const completion = await groq.chat.completions.create({
-            messages: [
-                {
-                    role: "system",
-                    content: `You are NoCap.dev, a Gen-Z viral fact-checker. Respond ONLY with valid JSON.
-
-RATING RUBRIC:
-- 9 to 10 (NO CAP): 100% Factually verified, scientifically sound, no missing context.
-- 5 to 8 (PARTIAL CAP): Mixed truth, clickbait exaggeration, or crucial context omitted.
-- 1 to 4 (TOTAL CAP): Debunked myth, fake news, blatantly false or dangerous misinfo.`
-                },
-                {
-                    role: "user",
-                    content: `Analyze this transcript: "${transcript}"
-                    
-                    Return strict JSON schema:
-                    {
-                      "rating": number (1 to 10),
-                      "verdict": "NO CAP 🧢" | "PARTIAL CAP 🧢🧢" | "TOTAL CAP 🧢🧢🧢",
-                      "factCheck": "Direct factual assessment",
-                      "theCatch": "Explain missing context or exaggeration AND explicitly state the CORRECT RIGHT ANSWER/FACT here.",
-                      "tldr": "Exactly 2 sentences summarizing the reality"
-                    }`
-                }
-            ],
-            model: "llama-3.3-70b-versatile",
-            response_format: { type: "json_object" },
-            temperature: 0.2
-        });
-
-        const jsonResult = JSON.parse(completion.choices[0].message.content);
-        res.json({ ...jsonResult, transcript });
+        console.log("Analyzing transcript with Multi-Agent Ensemble...");
+        const result = await analyzeWithMultiAgent(transcript);
+        res.json({ ...result, transcript });
 
     } catch (err) {
         console.error("VIDEO ANALYSIS ERROR:", err);
@@ -257,70 +369,6 @@ RATING RUBRIC:
         if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
 
         res.status(500).json({ error: err.message || 'Video processing failed.' });
-    }
-});
-
-// =============================================================
-// 3. IMAGE / SCREENSHOT FACT-CHECK ENDPOINT (CRASH-PROOF OCR)
-// =============================================================
-app.post('/api/check-image', upload.single('image'), async (req, res) => {
-    if (!req.file) {
-        return res.status(400).json({ error: 'No image file provided.' });
-    }
-
-    const imagePath = req.file.path;
-
-    try {
-        console.log("Extracting text from image via OCR...");
-        const { data: { text } } = await Tesseract.recognize(imagePath, 'eng+hin');
-
-        if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
-
-        const extractedText = text.trim();
-        if (!extractedText || extractedText.length < 5) {
-            return res.status(400).json({ error: 'No readable text or claim found in the uploaded image.' });
-        }
-
-        console.log("OCR Extracted Text:", extractedText.slice(0, 100) + "...");
-        console.log("Analyzing extracted claim via Groq AI...");
-
-        const completion = await groq.chat.completions.create({
-            messages: [
-                {
-                    role: "system",
-                    content: `You are NoCap.dev, a Gen-Z viral fact-checker. Respond ONLY with valid JSON.
-                    
-RATING RUBRIC:
-- 9 to 10 (NO CAP): 100% Factually verified, scientifically sound, no missing context.
-- 5 to 8 (PARTIAL CAP): Mixed truth, clickbait exaggeration, or crucial context omitted.
-- 1 to 4 (TOTAL CAP): Debunked myth, fake news, blatantly false or dangerous misinfo.`
-                },
-                {
-                    role: "user",
-                    content: `Analyze this content/claim found in an image: "${extractedText}"
-                    
-                    Return strict JSON schema:
-                    {
-                      "rating": number (1 to 10),
-                      "verdict": "NO CAP 🧢" | "PARTIAL CAP 🧢🧢" | "TOTAL CAP 🧢🧢🧢",
-                      "factCheck": "Direct factual assessment of claims made",
-                      "theCatch": "Explain missing context or exaggeration AND explicitly state the CORRECT RIGHT ANSWER/FACT here.",
-                      "tldr": "Exactly 2 sentences summarizing the reality"
-                    }`
-                }
-            ],
-            model: "llama-3.3-70b-versatile",
-            response_format: { type: "json_object" },
-            temperature: 0.2
-        });
-
-        const jsonResult = JSON.parse(completion.choices[0].message.content);
-        res.json({ ...jsonResult, transcript: extractedText });
-
-    } catch (err) {
-        console.error("IMAGE ANALYSIS ERROR:", err);
-        if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
-        res.status(500).json({ error: err.message || 'Image analysis failed.' });
     }
 });
 
@@ -422,7 +470,7 @@ const PORT = process.env.PORT || 5001;
 
 const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`=================================`);
-    console.log(`markiv.site Server RUNNING on http://localhost:${PORT}`);
+    console.log(`markiv.site Multi-Agent Fact Checker RUNNING on http://localhost:${PORT}`);
     console.log(`=================================`);
 });
 
