@@ -830,7 +830,7 @@
             <button class="menu-btn" onclick="toggleSidebar()" aria-label="Open Navigation Menu">
                 <i class="fa-solid fa-bars"></i>
             </button>
-            <a href="https://https://file-share-app-1-gqne.onrender.com" class="logo" style="text-decoration:none;">
+            <a href="https://file-share-app-1-gqne.onrender.com" class="logo" style="text-decoration:none;">
                 <span>markiv</span><span class="highlight">.site</span>
             </a>
         </div>
@@ -870,20 +870,30 @@
     <main class="container" id="fact-check">
         <section class="hero">
             <h1>Expose the Cap. <br><span class="gradient-text">Verify Viral Claims in Seconds.</span></h1>
-            <p>Paste text, or upload video files to analyze truthfulness using LLMs and AI audio transcription.</p>
+            <p>Paste text, upload images/memes, or upload video files to analyze truthfulness using LLMs and AI audio transcription.</p>
         </section>
 
         <!-- TAB SWITCHER -->
         <div class="tab-container">
-            <button class="tab-btn active" onclick="switchTab('text')"><i class="fa-solid fa-link"></i> Text / Claim / Image</button>
+            <button class="tab-btn active" onclick="switchTab('text')"><i class="fa-solid fa-link"></i> Text / Link</button>
+            <button class="tab-btn" onclick="switchTab('image')"><i class="fa-solid fa-image"></i> Image / Meme</button>
             <button class="tab-btn" onclick="switchTab('video')"><i class="fa-solid fa-file-video"></i> Video Upload</button>
         </div>
 
         <!-- INPUT SECTION -->
         <div class="card input-card">
             <div id="textInputGroup">
-                <textarea id="inputText" placeholder="Paste a claim, news article text." aria-label="Claim Text."></textarea>
+                <textarea id="inputText" placeholder="Paste a claim, news article text, or social media link." aria-label="Claim Text."></textarea>
                 <button class="submit-btn" onclick="analyzeText()"><i class="fa-solid fa-bolt"></i> Check Truth</button>
+            </div>
+
+            <div id="imageInputGroup" class="hidden">
+                <div class="file-dropzone" onclick="document.getElementById('imageFile').click()">
+                    <i class="fa-solid fa-cloud-arrow-up"></i>
+                    <p id="imageFileName">Click to select Image or Screenshot (JPG, PNG, WEBP)</p>
+                    <input type="file" id="imageFile" accept="image/*" hidden onchange="updateImageFileName()">
+                </div>
+                <button class="submit-btn" onclick="analyzeImage()"><i class="fa-solid fa-wand-magic-sparkles"></i> Fact Check Image</button>
             </div>
 
             <div id="videoInputGroup" class="hidden">
@@ -1042,7 +1052,7 @@
 
     <!-- JAVASCRIPT LOGIC -->
     <script>
-        // RELATIVE BASE URL (Prevents CORS and Hardcoded Host issues)
+        // Set API_BASE_URL to empty for same-origin backend, or your Ngrok URL when testing
         const API_BASE_URL = '';
 
         let currentResult = null;
@@ -1089,8 +1099,9 @@
                 content: `
                     <p><strong>How to verify claims on markiv.site:</strong></p>
                     <p>1. <strong>Text / Link Input:</strong> Paste any textual statement, news article link, or social media post URL (Reels).</p>
-                    <p>2. <strong>Video Upload:</strong> Direct-upload MP4 files to process audio via Whisper AI speech-to-text models.</p>
-                    <p>3. <strong>Understanding Scores:</strong> Scores from 9-10 represent Verified Truth, 5-8 indicate Exaggerated/Partial Truth, and 1-4 denote Debunked Misinformation.</p>
+                    <p>2. <strong>Image / Meme Input:</strong> Upload screenshot or meme images to read text via Vision AI models.</p>
+                    <p>3. <strong>Video Upload:</strong> Direct-upload MP4 files to process audio via Whisper AI speech-to-text models.</p>
+                    <p>4. <strong>Understanding Scores:</strong> Scores from 9-10 represent Verified Truth, 5-8 indicate Exaggerated/Partial Truth, and 1-4 denote Debunked Misinformation.</p>
                 `
             },
             faq: {
@@ -1117,6 +1128,7 @@
                 content: `
                     <p>• Home / Core Fact Checker Interface</p>
                     <p>• Video Audio Extraction & Analysis Pipeline</p>
+                    <p>• Image OCR & Vision Analysis Pipeline</p>
                     <p>• AI Help Assistant Floating Widget</p>
                     <p>• Contact, API & Legal Policy Documentation</p>
                 `
@@ -1160,19 +1172,27 @@
 
         function switchTab(tab) {
             const textGroup = document.getElementById('textInputGroup');
+            const imageGroup = document.getElementById('imageInputGroup');
             const videoGroup = document.getElementById('videoInputGroup');
             const btns = document.querySelectorAll('.tab-btn');
 
+            btns.forEach(btn => btn.classList.remove('active'));
+
             if (tab === 'text') {
                 textGroup.classList.remove('hidden');
+                imageGroup.classList.add('hidden');
                 videoGroup.classList.add('hidden');
                 btns[0].classList.add('active');
-                btns[1].classList.remove('active');
-            } else {
+            } else if (tab === 'image') {
                 textGroup.classList.add('hidden');
-                videoGroup.classList.remove('hidden');
-                btns[0].classList.remove('active');
+                imageGroup.classList.remove('hidden');
+                videoGroup.classList.add('hidden');
                 btns[1].classList.add('active');
+            } else if (tab === 'video') {
+                textGroup.classList.add('hidden');
+                imageGroup.classList.add('hidden');
+                videoGroup.classList.remove('hidden');
+                btns[2].classList.add('active');
             }
         }
 
@@ -1180,6 +1200,13 @@
             const file = document.getElementById('videoFile').files[0];
             if (file) {
                 document.getElementById('fileName').innerText = `Selected: ${file.name}`;
+            }
+        }
+
+        function updateImageFileName() {
+            const file = document.getElementById('imageFile').files[0];
+            if (file) {
+                document.getElementById('imageFileName').innerText = `Selected: ${file.name}`;
             }
         }
 
@@ -1205,7 +1232,7 @@
 
         async function analyzeText() {
             const text = document.getElementById('inputText').value;
-            if (!text) return alert("Please enter text or Photo/Video to analyze!");
+            if (!text) return alert("Please enter text or a link to analyze!");
 
             showLoading();
             try {
@@ -1228,6 +1255,37 @@
             } catch (err) {
                 hideLoading();
                 alert("Error connecting to server. Please check your network connection.");
+            }
+        }
+
+        async function analyzeImage() {
+            const fileInput = document.getElementById('imageFile');
+            if (!fileInput.files[0]) return alert("Please select an image file!");
+
+            const formData = new FormData();
+            formData.append('image', fileInput.files[0]);
+
+            showLoading();
+            try {
+                const res = await fetch(`${API_BASE_URL}/api/check-image`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await res.json();
+
+                if (!res.ok || data.error) {
+                    hideLoading();
+                    alert(data.error || "Error analyzing image file.");
+                    return;
+                }
+
+                currentResult = data;
+                renderResult(data);
+            } catch (err) {
+                hideLoading();
+                console.error("Image Upload Error:", err);
+                alert("Image processing failed. Please try again with a valid photo or screenshot.");
             }
         }
 

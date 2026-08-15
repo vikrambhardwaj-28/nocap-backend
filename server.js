@@ -21,7 +21,7 @@ if (!fs.existsSync('uploads')) {
     fs.mkdirSync('uploads');
 }
 
-// Multer Configured for Video Uploads (100MB Limit)
+// Multer Configured for Video & Image Uploads (100MB Limit)
 const upload = multer({ 
     dest: 'uploads/',
     limits: { fileSize: 100 * 1024 * 1024 }
@@ -121,15 +121,12 @@ app.post('/api/check-text', async (req, res) => {
         const audioPath = path.join('uploads', audioFilename);
 
         try {
-            // STEP 1: Download Audio Stream to MP3 File
             console.log("Step 1: Downloading Audio File...");
             await downloadAudioFromUrl(cleanInput, audioPath);
 
-            // STEP 2: Transcribe Speech to Text via Whisper
             console.log("Step 2: Transcribing Audio Speech to Text via Whisper...");
             const audioTranscript = await transcribeAudio(audioPath);
 
-            // Clean up downloaded MP3 file
             if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
 
             if (!audioTranscript || audioTranscript.trim().length === 0) {
@@ -150,7 +147,6 @@ app.post('/api/check-text', async (req, res) => {
         }
     }
 
-    // STEP 3: Pass Transcribed Speech Text to Groq AI for Fact-Checking
     try {
         console.log("Step 3: Analyzing Transcribed Speech via Groq AI...");
         const completion = await groq.chat.completions.create({
@@ -264,7 +260,80 @@ RATING RUBRIC:
 });
 
 // =============================================================
-// 3. AI TRANSLATION ENDPOINT
+// 3. IMAGE / SCREENSHOT FACT-CHECK ENDPOINT (NEW OCR + VISION)
+// =============================================================
+app.post('/api/check-image', upload.single('image'), async (req, res) => {
+    if (!req.file) {
+        return res.status(400).json({ error: 'No image file provided.' });
+    }
+
+    const imagePath = req.file.path;
+
+    try {
+        console.log("Processing uploaded image for text extraction & fact-check...");
+        const imageBuffer = fs.readFileSync(imagePath);
+        const base64Image = imageBuffer.toString('base64');
+        const mimeType = req.file.mimetype || 'image/jpeg';
+
+        console.log("Analyzing image via Groq Vision AI...");
+        const completion = await groq.chat.completions.create({
+            messages: [
+                {
+                    role: "system",
+                    content: `You are NoCap.dev, a Gen-Z viral fact-checker. 
+Read the text, headline, meme, or claim shown in this image, extract the claim, and fact-check it with 100% precision. 
+Respond ONLY with valid JSON.
+
+RATING RUBRIC:
+- 9 to 10 (NO CAP): 100% Factually verified, scientifically sound, no missing context.
+- 5 to 8 (PARTIAL CAP): Mixed truth, clickbait exaggeration, or crucial context omitted.
+- 1 to 4 (TOTAL CAP): Debunked myth, fake news, blatantly false or dangerous misinfo.`
+                },
+                {
+                    role: "user",
+                    content: [
+                        {
+                            type: "text",
+                            text: `Extract the text/claim from this image and fact-check it.
+                            
+Return strict JSON schema:
+{
+  "rating": number (1 to 10),
+  "verdict": "NO CAP 🧢" | "PARTIAL CAP 🧢🧢" | "TOTAL CAP 🧢🧢🧢",
+  "factCheck": "Direct factual assessment of the text/claim written on the image",
+  "theCatch": "Explain missing context or exaggeration AND explicitly state the CORRECT RIGHT ANSWER/FACT here.",
+  "tldr": "Exactly 2 sentences summarizing the reality",
+  "extractedText": "The actual text read from the image"
+}`
+                        },
+                        {
+                            type: "image_url",
+                            image_url: {
+                                url: `data:${mimeType};base64,${base64Image}`
+                            }
+                        }
+                    ]
+                }
+            ],
+            model: "llama-3.2-11b-vision-preview",
+            response_format: { type: "json_object" },
+            temperature: 0.2
+        });
+
+        if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
+
+        const jsonResult = JSON.parse(completion.choices[0].message.content);
+        res.json({ ...jsonResult, transcript: jsonResult.extractedText });
+
+    } catch (err) {
+        console.error("IMAGE ANALYSIS ERROR:", err);
+        if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
+        res.status(500).json({ error: err.message || 'Image analysis failed.' });
+    }
+});
+
+// =============================================================
+// 4. AI TRANSLATION ENDPOINT
 // =============================================================
 app.post('/api/translate', async (req, res) => {
     try {
@@ -321,7 +390,7 @@ app.post('/api/translate', async (req, res) => {
 });
 
 // =============================================================
-// 4. AI CHATBOT ASSISTANT ENDPOINT
+// 5. AI CHATBOT ASSISTANT ENDPOINT
 // =============================================================
 app.post('/api/chat-assistant', async (req, res) => {
     const { message, mode } = req.body;
