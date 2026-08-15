@@ -260,7 +260,7 @@ RATING RUBRIC:
 });
 
 // =============================================================
-// 3. IMAGE / SCREENSHOT FACT-CHECK ENDPOINT (NEW OCR + VISION)
+// 3. IMAGE / SCREENSHOT FACT-CHECK ENDPOINT (UPDATED VISION MODEL)
 // =============================================================
 app.post('/api/check-image', upload.single('image'), async (req, res) => {
     if (!req.file) {
@@ -315,7 +315,7 @@ Return strict JSON schema:
                     ]
                 }
             ],
-            model: "llama-3.2-11b-vision-preview",
+            model: "llama-3.2-90b-vision-preview",
             response_format: { type: "json_object" },
             temperature: 0.2
         });
