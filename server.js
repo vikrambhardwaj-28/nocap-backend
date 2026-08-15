@@ -315,7 +315,7 @@ Return strict JSON schema:
                     ]
                 }
             ],
-            model: "llama-3.2-11b-vision-instruct",
+            model: "meta-llama/llama-4-scenic-instruct",
             response_format: { type: "json_object" },
             temperature: 0.2
         });
