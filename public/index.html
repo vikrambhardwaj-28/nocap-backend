@@ -870,19 +870,19 @@
     <main class="container" id="fact-check">
         <section class="hero">
             <h1>Expose the Cap. <br><span class="gradient-text">Verify Viral Claims in Seconds.</span></h1>
-            <p>Paste text, social media links, or upload video files to analyze truthfulness using LLMs and AI audio transcription.</p>
+            <p>Paste text, or upload video files to analyze truthfulness using LLMs and AI audio transcription.</p>
         </section>
 
         <!-- TAB SWITCHER -->
         <div class="tab-container">
-            <button class="tab-btn active" onclick="switchTab('text')"><i class="fa-solid fa-link"></i> Text / Claim / Link</button>
+            <button class="tab-btn active" onclick="switchTab('text')"><i class="fa-solid fa-link"></i> Text / Claim / Image</button>
             <button class="tab-btn" onclick="switchTab('video')"><i class="fa-solid fa-file-video"></i> Video Upload</button>
         </div>
 
         <!-- INPUT SECTION -->
         <div class="card input-card">
             <div id="textInputGroup">
-                <textarea id="inputText" placeholder="Paste a claim, news article text, or social link (Instagram)..." aria-label="Claim Text or URL Input"></textarea>
+                <textarea id="inputText" placeholder="Paste a claim, news article text." aria-label="Claim Text."></textarea>
                 <button class="submit-btn" onclick="analyzeText()"><i class="fa-solid fa-bolt"></i> Check Truth</button>
             </div>
 
@@ -1205,7 +1205,7 @@
 
         async function analyzeText() {
             const text = document.getElementById('inputText').value;
-            if (!text) return alert("Please enter text or link!");
+            if (!text) return alert("Please enter text or Photo/Video to analyze!");
 
             showLoading();
             try {
