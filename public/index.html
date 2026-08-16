@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=8">
-<link rel="apple-touch-icon" href="/favicon.svg?v=8">
+    <link rel="apple-touch-icon" href="/favicon.svg?v=8">
     <title>markiv.site — Free AI Fact Checker, Fake News & Claim Verifier</title>
     
     <!-- PRIMARY META TAGS -->
@@ -119,7 +119,7 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 1.2rem 2rem;
+            padding: 0.9rem 2rem;
             border-bottom: 1px solid var(--border-color);
             background-color: var(--navbar-bg);
             backdrop-filter: blur(12px);
@@ -131,7 +131,14 @@
         .nav-left {
             display: flex;
             align-items: center;
-            gap: 1.2rem;
+            gap: 1rem;
+        }
+
+        .brand-link {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            text-decoration: none;
         }
 
         .menu-btn {
@@ -149,11 +156,67 @@
             background: var(--input-bg);
         }
 
+        /* --- ANIMATED CYBER LOGO STYLES --- */
+        .animated-logo {
+            width: 44px;
+            height: 44px;
+            display: inline-block;
+            vertical-align: middle;
+            filter: drop-shadow(0 0 10px rgba(0, 242, 254, 0.4));
+            transition: transform 0.3s ease;
+        }
+
+        .brand-link:hover .animated-logo {
+            transform: scale(1.12);
+            filter: drop-shadow(0 0 16px rgba(0, 242, 254, 0.7));
+        }
+
+        .ring-cw {
+            transform-origin: 32px 32px;
+            animation: rotateOrbitCW 7s linear infinite;
+        }
+
+        .ring-ccw {
+            transform-origin: 32px 32px;
+            animation: rotateOrbitCCW 11s linear infinite;
+        }
+
+        .shield-pulse {
+            transform-origin: 32px 32px;
+            animation: pulseCore 2.5s ease-in-out infinite alternate;
+        }
+
+        .node-pulse {
+            animation: sparkGlow 1.8s ease-in-out infinite alternate;
+        }
+
+        @keyframes rotateOrbitCW {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        @keyframes rotateOrbitCCW {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(-360deg); }
+        }
+
+        @keyframes pulseCore {
+            0% { transform: scale(0.94); filter: drop-shadow(0 0 2px #00f2fe); }
+            100% { transform: scale(1.05); filter: drop-shadow(0 0 8px #ec4899); }
+        }
+
+        @keyframes sparkGlow {
+            0% { opacity: 0.5; r: 2.5; }
+            100% { opacity: 1; r: 4.5; }
+        }
+
         .logo {
-            font-size: 1.6rem;
+            font-size: 1.55rem;
             font-weight: 800;
             letter-spacing: -0.5px;
             color: var(--text-primary) !important;
+            display: flex;
+            align-items: center;
         }
 
         .logo .highlight {
@@ -870,8 +933,40 @@
             <button class="menu-btn" onclick="toggleSidebar()" aria-label="Open Navigation Menu">
                 <i class="fa-solid fa-bars"></i>
             </button>
-            <a href="https://file-share-app-1-gqne.onrender.com" class="logo" style="text-decoration:none;">
-                <span>markiv</span><span class="highlight">.site</span>
+
+            <!-- LOGO WITH INTEGRATED LIVE ANIMATED SVG -->
+            <a href="/" class="brand-link">
+                <svg class="animated-logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+                    <defs>
+                        <linearGradient id="neonGradientNav" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stop-color="#00f2fe" />
+                            <stop offset="50%" stop-color="#6366f1" />
+                            <stop offset="100%" stop-color="#ec4899" />
+                        </linearGradient>
+                    </defs>
+                    
+                    <!-- AirShare Orbit Ring 1 (Rotating Clockwise) -->
+                    <g class="ring-cw">
+                        <ellipse cx="32" cy="32" rx="30" ry="12" fill="none" stroke="#00f2fe" stroke-width="2.5" stroke-dasharray="6 4" transform="rotate(-30 32 32)"/>
+                        <circle cx="58" cy="18" r="3" fill="#00f2fe" class="node-pulse"/>
+                    </g>
+
+                    <!-- AirShare Orbit Ring 2 (Rotating Counter-Clockwise) -->
+                    <g class="ring-ccw">
+                        <ellipse cx="32" cy="32" rx="30" ry="12" fill="none" stroke="url(#neonGradientNav)" stroke-width="2" transform="rotate(45 32 32)"/>
+                        <circle cx="6" cy="46" r="3" fill="#ec4899" class="node-pulse"/>
+                    </g>
+
+                    <!-- Fact-Check Core Shield & Neon Checkmark (Pulsing Center) -->
+                    <g class="shield-pulse">
+                        <polygon points="32,8 54,32 32,56 10,32" fill="#09090b" stroke="url(#neonGradientNav)" stroke-width="3"/>
+                        <path d="M 23 32 L 29 39 L 41 24" fill="none" stroke="#00ff88" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    </g>
+                </svg>
+
+                <div class="logo">
+                    <span>markiv</span><span class="highlight">.site</span>
+                </div>
             </a>
         </div>
         <button id="themeToggleBtn" class="theme-btn" onclick="toggleTheme()" aria-label="Toggle Theme">
@@ -882,8 +977,14 @@
     <div id="sidebarOverlay" class="sidebar-overlay" onclick="toggleSidebar()"></div>
     <aside id="sidebar" class="sidebar">
         <div class="sidebar-header">
-            <a href="/" class="logo" style="text-decoration:none;">
-                <span>markiv</span><span class="highlight">.site</span>
+            <a href="/" class="brand-link">
+                <svg class="animated-logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" style="width: 32px; height: 32px;">
+                    <polygon points="32,8 54,32 32,56 10,32" fill="#09090b" stroke="#6366f1" stroke-width="3"/>
+                    <path d="M 23 32 L 29 39 L 41 24" fill="none" stroke="#00ff88" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <div class="logo">
+                    <span>markiv</span><span class="highlight">.site</span>
+                </div>
             </a>
             <button class="close-sidebar-btn" onclick="toggleSidebar()">&times;</button>
         </div>
