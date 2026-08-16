@@ -1,14 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="100%" height="100%">
   <defs>
-    <linearGradient id="eyeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+    <linearGradient id="favPortal" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#00f2fe" />
+      <stop offset="50%" stop-color="#6366f1" />
       <stop offset="100%" stop-color="#ec4899" />
     </linearGradient>
   </defs>
-  <rect width="64" height="64" rx="16" fill="#050505"/>
-  <!-- Outer Cyber Eye -->
-  <path d="M 8 32 Q 32 12 56 32 Q 32 52 8 32 Z" fill="none" stroke="url(#eyeGrad)" stroke-width="6" stroke-linejoin="round"/>
-  <!-- Pupil Iris -->
-  <circle cx="32" cy="32" r="8" fill="#00f2fe"/>
-  <circle cx="32" cy="32" r="3.5" fill="#ffffff"/>
+  <!-- Orbit Transfer Ring -->
+  <ellipse cx="32" cy="32" rx="28" ry="12" fill="none" stroke="#00f2fe" stroke-width="4.5" transform="rotate(-30 32 32)"/>
+  <!-- Diamond Core Shield -->
+  <polygon points="32,12 50,32 32,52 14,32" fill="#09090b" stroke="url(#favPortal)" stroke-width="4"/>
+  <!-- Bright Neon Checkmark -->
+  <path d="M 23 32 L 29 39 L 41 25" fill="none" stroke="#00ff88" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
