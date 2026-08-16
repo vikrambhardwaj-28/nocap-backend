@@ -15,7 +15,6 @@ const { extractAudio, transcribeAudio } = require('./audioService');
 
 const app = express();
 
-// Middleware Setup
 app.use(express.json());
 app.use(cors());
 app.use(express.static('public'));
@@ -24,13 +23,11 @@ if (!fs.existsSync('uploads')) {
     fs.mkdirSync('uploads');
 }
 
-// Multer Configured for Video & Image Uploads (100MB Limit)
 const upload = multer({ 
     dest: 'uploads/',
     limits: { fileSize: 100 * 1024 * 1024 }
 });
 
-// Initialize Multi-AI Clients
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 const mistral = new Mistral({ apiKey: process.env.MISTRAL_API_KEY });
@@ -54,24 +51,17 @@ Return strict JSON schema only:
   "tldr": "Exactly 2 concise sentences summarizing the reality."
 }`;
 
-// =============================================================
-// MULTI-AGENT ENSEMBLE ENGINE (GROQ + GEMINI + MISTRAL + TIMEOUT GUARD)
-// =============================================================
 async function analyzeWithMultiAgent(claimText) {
-    console.log("[MULTI-AGENT] Initiating deep verification across Groq, Gemini & Mistral...");
-
-    // Helper: 4.5 सेकंड का सख्त टाइमआउट (ताकि यूजर को इंतज़ार न करना पड़े)
     const withTimeout = (promise, agentName, ms = 4500) => {
         const timeout = new Promise((resolve) =>
             setTimeout(() => {
-                console.warn(`[TIMEOUT] ${agentName} took too long (> ${ms}ms). Skipping to prevent delay.`);
+                console.warn(`[TIMEOUT] ${agentName} took too long (> ${ms}ms).`);
                 resolve(null);
             }, ms)
         );
         return Promise.race([promise, timeout]);
     };
 
-    // Agent 1: Groq (LLaMA 3.3 70B)
     const runGroq = async () => {
         try {
             const completion = await groq.chat.completions.create({
@@ -90,7 +80,6 @@ async function analyzeWithMultiAgent(claimText) {
         }
     };
 
-    // Agent 2: Google Gemini (2.5 Flash)
     const runGemini = async () => {
         try {
             const response = await ai.models.generateContent({
@@ -105,7 +94,6 @@ async function analyzeWithMultiAgent(claimText) {
         }
     };
 
-    // Agent 3: Mistral AI (Large Latest)
     const runMistral = async () => {
         try {
             const response = await mistral.chat.complete({
@@ -124,29 +112,22 @@ async function analyzeWithMultiAgent(claimText) {
         }
     };
 
-    // तीनों एजेंट्स को एक साथ पैरेलल चलाएँ (4.5s Timeout Guard के साथ)
     const [resGroq, resGemini, resMistral] = await Promise.all([
         withTimeout(runGroq(), "Groq"),
         withTimeout(runGemini(), "Gemini"),
         withTimeout(runMistral(), "Mistral")
     ]);
 
-    // जो-जो एजेंट्स समय पर सही रिस्पॉन्स देंगे, उन्हें फ़िल्टर करें
     const validResults = [resGroq, resGemini, resMistral].filter(
         (r) => r && typeof r.rating === 'number'
     );
 
-    console.log(`[CONSENSUS] Received responses from ${validResults.length} / 3 AI agents.`);
-
-    // इमरजेंसी फ़ॉलबैक (यदि सभी टाइमआउट हो जाएँ)
     if (validResults.length === 0) {
-        console.log("[FALLBACK] All agents timed out. Running emergency single call...");
         const fallback = await runGroq();
-        if (!fallback) throw new Error("Fact check service is temporarily busy. Please try again.");
+        if (!fallback) throw new Error("Fact check service is temporarily unavailable.");
         validResults.push(fallback);
     }
 
-    // समय पर आए सभी एजेंट्स के स्कोर्स का सही औसत (Consensus Average)
     const avgRating = Math.round(
         validResults.reduce((acc, curr) => acc + curr.rating, 0) / validResults.length
     );
@@ -155,7 +136,6 @@ async function analyzeWithMultiAgent(claimText) {
     if (avgRating <= 4) consensusVerdict = "TOTAL CAP 🧢🧢🧢";
     else if (avgRating <= 8) consensusVerdict = "PARTIAL CAP 🧢🧢";
 
-    // जो भी सबसे विस्तृत रिपोर्ट उपलब्ध हो, उसका विवरण लें
     const primaryReport = resGroq || resGemini || resMistral || validResults[0];
 
     return {
@@ -168,15 +148,10 @@ async function analyzeWithMultiAgent(claimText) {
     };
 }
 
-// =============================================================
-// UNIFIED AUDIO DOWNLOADER ENGINE (yt-dlp + Cobalt Streamer)
-// =============================================================
 async function downloadAudioFromUrl(url, outputAudioPath) {
     const cleanUrl = url.trim();
 
-    // METHOD 1: Local yt-dlp audio download
     try {
-        console.log("[AUDIO] Attempt 1: Downloading audio with yt-dlp...");
         await new Promise((resolve, reject) => {
             const ytDlpExecutable = fs.existsSync('./yt-dlp') ? './yt-dlp' : 'yt-dlp';
             const command = `${ytDlpExecutable} --ffmpeg-location "${ffmpegPath}" --extractor-args "youtube:player_client=android,web" --user-agent "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15" -x --audio-format mp3 -o "${outputAudioPath}" "${cleanUrl}"`;
@@ -188,16 +163,13 @@ async function downloadAudioFromUrl(url, outputAudioPath) {
         });
 
         if (fs.existsSync(outputAudioPath) && fs.statSync(outputAudioPath).size > 1000) {
-            console.log("[AUDIO] SUCCESS via yt-dlp!");
             return outputAudioPath;
         }
     } catch (ytErr) {
-        console.log("[AUDIO] yt-dlp failed. Switching to Cobalt Audio Streamer...");
+        console.warn("[AUDIO] yt-dlp fallback triggered.");
     }
 
-    // METHOD 2: Cobalt API Streamer
     try {
-        console.log("[AUDIO] Attempt 2: Downloading MP3 stream via Cobalt Engine...");
         const response = await axios.post('https://api.cobalt.tools/api/json', {
             url: cleanUrl,
             downloadMode: "audio",
@@ -216,7 +188,6 @@ async function downloadAudioFromUrl(url, outputAudioPath) {
             throw new Error("No audio stream URL returned from Cobalt");
         }
 
-        console.log("[AUDIO] Streaming MP3 to local uploads folder...");
         const writer = fs.createWriteStream(outputAudioPath);
         const streamRes = await axios.get(audioStreamUrl, { responseType: 'stream', timeout: 30000 });
 
@@ -227,21 +198,17 @@ async function downloadAudioFromUrl(url, outputAudioPath) {
         });
 
         if (fs.existsSync(outputAudioPath) && fs.statSync(outputAudioPath).size > 1000) {
-            console.log("[AUDIO] SUCCESS via Cobalt Streamer!");
             return outputAudioPath;
         } else {
             throw new Error("Downloaded audio file is empty.");
         }
 
     } catch (cobaltErr) {
-        console.error("[AUDIO] Cobalt Streamer Error:", cobaltErr.message);
+        console.error("[AUDIO] Streamer Error:", cobaltErr.message);
         throw new Error("Failed to extract audio from all engines.");
     }
 }
 
-// =============================================================
-// 1. TEXT / LINK FACT-CHECK ENDPOINT
-// =============================================================
 app.post('/api/check-text', async (req, res) => {
     const { text } = req.body;
     if (!text) {
@@ -253,17 +220,11 @@ app.post('/api/check-text', async (req, res) => {
     let transcript = cleanInput;
 
     if (isUrl) {
-        console.log("--------------------------------------------------");
-        console.log("Processing URL (Audio ➔ Speech-to-Text Pipeline):", cleanInput);
-        
         const audioFilename = `audio_${Date.now()}.mp3`;
         const audioPath = path.join('uploads', audioFilename);
 
         try {
-            console.log("Step 1: Downloading Audio File...");
             await downloadAudioFromUrl(cleanInput, audioPath);
-
-            console.log("Step 2: Transcribing Audio Speech to Text via Whisper...");
             const audioTranscript = await transcribeAudio(audioPath);
 
             if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
@@ -275,11 +236,8 @@ app.post('/api/check-text', async (req, res) => {
             }
 
             transcript = audioTranscript;
-            console.log("Step 2 Completed. Speech Transcript:", transcript.slice(0, 150) + "...");
-
         } catch (err) {
             if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
-            console.error("Audio Speech Pipeline Error:", err.message);
             return res.status(400).json({ 
                 error: 'Failed to extract audio speech from this link. The video might be private or restricted.' 
             });
@@ -287,22 +245,14 @@ app.post('/api/check-text', async (req, res) => {
     }
 
     try {
-        console.log("Step 3: Analyzing via Multi-Agent Ensemble...");
         const result = await analyzeWithMultiAgent(transcript);
-        console.log("Step 3 Completed successfully.");
-        console.log("--------------------------------------------------");
-
         res.json({ ...result, transcript: isUrl ? transcript : undefined });
-
     } catch (err) {
         console.error("ANALYSIS ERROR:", err);
         res.status(500).json({ error: err.message || 'Multi-Agent analysis failed.' });
     }
 });
 
-// =============================================================
-// 2. IMAGE / SCREENSHOT FACT-CHECK ENDPOINT (TESSERACT OCR)
-// =============================================================
 app.post('/api/check-image', upload.single('image'), async (req, res) => {
     if (!req.file) {
         return res.status(400).json({ error: 'No image file provided.' });
@@ -311,7 +261,6 @@ app.post('/api/check-image', upload.single('image'), async (req, res) => {
     const imagePath = req.file.path;
 
     try {
-        console.log("Extracting text from image via OCR...");
         const { data: { text } } = await Tesseract.recognize(imagePath, 'eng+hin');
 
         if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
@@ -320,9 +269,6 @@ app.post('/api/check-image', upload.single('image'), async (req, res) => {
         if (!extractedText || extractedText.length < 5) {
             return res.status(400).json({ error: 'No readable text or claim found in the uploaded image.' });
         }
-
-        console.log("OCR Extracted Text:", extractedText.slice(0, 100) + "...");
-        console.log("Analyzing extracted claim via Multi-Agent Ensemble...");
 
         const result = await analyzeWithMultiAgent(extractedText);
         res.json({ ...result, transcript: extractedText });
@@ -334,9 +280,6 @@ app.post('/api/check-image', upload.single('image'), async (req, res) => {
     }
 });
 
-// =============================================================
-// 3. DIRECT VIDEO FILE UPLOAD ENDPOINT
-// =============================================================
 app.post('/api/check-video', upload.single('video'), async (req, res) => {
     if (!req.file) {
         return res.status(400).json({ error: 'No video file provided.' });
@@ -346,10 +289,7 @@ app.post('/api/check-video', upload.single('video'), async (req, res) => {
     const audioPath = path.join('uploads', `${req.file.filename}.mp3`);
 
     try {
-        console.log("Extracting audio from uploaded video file...");
         await extractAudio(videoPath, audioPath);
-        
-        console.log("Transcribing extracted audio...");
         const transcript = await transcribeAudio(audioPath);
 
         if (fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
@@ -359,7 +299,6 @@ app.post('/api/check-video', upload.single('video'), async (req, res) => {
             return res.status(400).json({ error: 'No speech detected in uploaded video.' });
         }
 
-        console.log("Analyzing transcript with Multi-Agent Ensemble...");
         const result = await analyzeWithMultiAgent(transcript);
         res.json({ ...result, transcript });
 
@@ -372,9 +311,6 @@ app.post('/api/check-video', upload.single('video'), async (req, res) => {
     }
 });
 
-// =============================================================
-// 4. AI TRANSLATION ENDPOINT
-// =============================================================
 app.post('/api/translate', async (req, res) => {
     try {
         const { targetLang, factCheck, theCatch, tldr } = req.body;
@@ -429,9 +365,6 @@ app.post('/api/translate', async (req, res) => {
     }
 });
 
-// =============================================================
-// 5. AI CHATBOT ASSISTANT ENDPOINT
-// =============================================================
 app.post('/api/chat-assistant', async (req, res) => {
     const { message, mode } = req.body;
     
@@ -463,15 +396,10 @@ app.post('/api/chat-assistant', async (req, res) => {
     }
 });
 
-// =============================================================
-// SERVER LISTENER & CRASH PREVENTION
-// =============================================================
 const PORT = process.env.PORT || 5001;
 
 const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`=================================`);
     console.log(`markiv.site Multi-Agent Fact Checker RUNNING on http://localhost:${PORT}`);
-    console.log(`=================================`);
 });
 
 server.timeout = 300000;

@@ -3,49 +3,68 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>markiv.site — Free AI Fact Checker, Fake News & Claim Verifier</title>
     
-    <!-- PRIMARY SEO META TAGS -->
-    <title>markiv.site — Free AI Fact Checker & Fake News Verifier</title>
-    <meta name="title" content="markiv.site — Free AI Fact Checker & Fake News Verifier">
-    <meta name="description" content="Verify viral claims, Instagram reels, Facebook posts, and news articles instantly with markiv.site. Free AI-powered fact-checking tool using speech recognition and LLMs.">
-    <meta name="keywords" content="fact checker, fake news detection, markiv site, verify reels, instagram fact check, facebook claim verifier, AI truth checker, propaganda checker">
-    <meta name="robots" content="index, follow">
+    <!-- PRIMARY META TAGS -->
+    <meta name="title" content="markiv.site — Free AI Fact Checker, Fake News & Claim Verifier">
+    <meta name="description" content="Verify viral claims, news articles, memes, images, and videos with AI multi-agent consensus (Groq, Gemini, Mistral). Free instant fact-checking engine.">
+    <meta name="keywords" content="fact checker, fake news verifier, viral claim checker, AI fact checking, image OCR fact check, video truth verifier, markiv site, debunker tool, misinformation detector">
     <meta name="author" content="markiv.site Technologies">
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+    <meta name="googlebot" content="index, follow">
+    <meta name="theme-color" content="#6366f1">
     <link rel="canonical" href="https://markiv.site/">
 
-    <!-- OPEN GRAPH / FACEBOOK SOCIAL PREVIEW -->
+    <!-- OPEN GRAPH / FACEBOOK -->
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://markiv.site/">
-    <meta property="og:title" content="markiv.site — Expose Propaganda & Verify Viral Claims">
-    <meta property="og:description" content="Instantly check if a social media reel, article, or claim is true or fake news using advanced AI models.">
+    <meta property="og:title" content="markiv.site — Free AI Fact Checker & Fake News Verifier">
+    <meta property="og:description" content="Verify viral social media claims, images, audio, and videos instantly with multi-agent AI verification.">
     <meta property="og:image" content="https://markiv.site/assets/preview.png">
+    <meta property="og:image:alt" content="markiv.site Fact Checker Platform Preview">
+    <meta property="og:site_name" content="markiv.site">
 
-    <!-- TWITTER CARD PREVIEW -->
+    <!-- TWITTER / X -->
     <meta property="twitter:card" content="summary_large_image">
     <meta property="twitter:url" content="https://markiv.site/">
     <meta property="twitter:title" content="markiv.site — Viral Fact Checker">
-    <meta property="twitter:description" content="Verify viral claims, Instagram reels, and news articles instantly with free AI transcription.">
+    <meta property="twitter:description" content="Verify viral claims, news articles, and media instantly using multi-LLM consensus.">
     <meta property="twitter:image" content="https://markiv.site/assets/preview.png">
 
-    <!-- SCHEMA MARKUP FOR GOOGLE RICH SNIPPETS (JSON-LD) -->
+    <!-- SCHEMA JSON-LD STRUCTURED DATA -->
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
-      "@type": "WebApplication",
-      "name": "markiv.site",
-      "url": "https://markiv.site/",
-      "description": "A non-profit AI-powered fact-checking platform to verify viral claims, social media links, and videos.",
-      "applicationCategory": "UtilitiesApplication",
-      "operatingSystem": "All",
-      "author": {
-        "@type": "Organization",
-        "name": "markiv.site Technologies",
-        "url": "https://markiv.site"
-      }
+      "@graph": [
+        {
+          "@type": "WebSite",
+          "@id": "https://markiv.site/#website",
+          "url": "https://markiv.site/",
+          "name": "markiv.site",
+          "description": "Free AI Multi-Agent Fact Checker & Fake News Verifier",
+          "publisher": {
+            "@type": "Organization",
+            "name": "markiv.site Technologies",
+            "url": "https://markiv.site/"
+          }
+        },
+        {
+          "@type": "WebApplication",
+          "@id": "https://markiv.site/#webapp",
+          "name": "markiv.site Fact Checker",
+          "url": "https://markiv.site/",
+          "applicationCategory": "UtilitiesApplication",
+          "operatingSystem": "All",
+          "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "USD"
+          }
+        }
+      ]
     }
     </script>
 
-    <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
     <style>
@@ -430,7 +449,6 @@
             -webkit-text-fill-color: transparent;
         }
 
-        /* RESPONSIVE TRANSLATION BAR */
         .translate-bar {
             display: flex;
             flex-wrap: wrap;
@@ -482,35 +500,56 @@
             background: var(--accent-hover);
         }
 
-        /* ANIMATED LOADING DOTS */
-        .loading-dots {
+        .agent-loader-container {
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            height: 45px;
+            flex-wrap: wrap;
+            padding: 6px 0;
         }
 
-        .loading-dots span {
-            width: 12px;
-            height: 12px;
-            background-color: var(--accent-color);
-            border-radius: 50%;
-            display: inline-block;
-            animation: dotPulse 1.4s infinite ease-in-out both;
+        .ai-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.82rem;
+            font-weight: 700;
+            padding: 6px 12px;
+            border-radius: 20px;
+            background: var(--input-bg);
+            border: 1px solid var(--border-color);
+            letter-spacing: 0.3px;
+            animation: chipGlow 1.4s infinite ease-in-out;
         }
 
-        .loading-dots span:nth-child(1) { animation-delay: -0.32s; }
-        .loading-dots span:nth-child(2) { animation-delay: -0.16s; }
+        .ai-chip.groq {
+            color: #f55036;
+            border-color: rgba(245, 80, 54, 0.4);
+            animation-delay: 0s;
+        }
 
-        @keyframes dotPulse {
-            0%, 80%, 100% { 
-                transform: scale(0.3); 
-                opacity: 0.3; 
+        .ai-chip.gemini {
+            color: #4285f4;
+            border-color: rgba(66, 133, 244, 0.4);
+            animation-delay: 0.2s;
+        }
+
+        .ai-chip.mistral {
+            color: #ff7000;
+            border-color: rgba(255, 112, 0, 0.4);
+            animation-delay: 0.4s;
+        }
+
+        @keyframes chipGlow {
+            0%, 100% {
+                transform: scale(0.96);
+                opacity: 0.7;
+                box-shadow: 0 0 0px transparent;
             }
-            40% { 
-                transform: scale(1); 
-                opacity: 1; 
-                box-shadow: 0 0 12px var(--accent-glow);
+            50% {
+                transform: scale(1.04);
+                opacity: 1;
+                box-shadow: 0 0 12px currentColor;
             }
         }
 
@@ -824,7 +863,6 @@
 </head>
 <body>
 
-    <!-- NAVBAR WITH HAMBURGER MENU -->
     <header class="navbar">
         <div class="nav-left">
             <button class="menu-btn" onclick="toggleSidebar()" aria-label="Open Navigation Menu">
@@ -839,7 +877,6 @@
         </button>
     </header>
 
-    <!-- SIDEBAR DRAWER MENU -->
     <div id="sidebarOverlay" class="sidebar-overlay" onclick="toggleSidebar()"></div>
     <aside id="sidebar" class="sidebar">
         <div class="sidebar-header">
@@ -850,15 +887,12 @@
         </div>
         <ul class="sidebar-links">
             <li><a href="/" class="active"><i class="fa-solid fa-bolt"></i> Viral Fact Checker</a></li>
-            
-            <!-- File Sharing Site Link -->
             <li>
                 <a href="https://air-share.markiv.site/" target="_blank" rel="noopener">
                     <i class="fa-solid fa-share-nodes"></i> File Sharing Platform
                     <span class="badge-new">NEW</span>
                 </a>
             </li>
-
             <li><a onclick="openModal('guide'); toggleSidebar();"><i class="fa-solid fa-circle-info"></i> How It Works</a></li>
             <li><a onclick="openModal('api'); toggleSidebar();"><i class="fa-solid fa-code"></i> Developer API <span class="badge-new">v1.0</span></a></li>
             <li><a onclick="openModal('about'); toggleSidebar();"><i class="fa-solid fa-bullseye"></i> Our Mission</a></li>
@@ -866,21 +900,18 @@
         </ul>
     </aside>
 
-    <!-- MAIN FACT-CHECKER SECTION -->
     <main class="container" id="fact-check">
         <section class="hero">
             <h1>Expose the Cap. <br><span class="gradient-text">Verify Viral Claims in Seconds.</span></h1>
-            <p>Paste text, upload images/memes, or upload video files to analyze truthfulness using LLMs and AI audio transcription.</p>
+            <p>Paste text, upload images/memes, or upload video files to analyze truthfulness using multi-agent AI verification.</p>
         </section>
 
-        <!-- TAB SWITCHER -->
         <div class="tab-container">
             <button class="tab-btn active" onclick="switchTab('text')"><i class="fa-solid fa-link"></i> Text / Article</button>
             <button class="tab-btn" onclick="switchTab('image')"><i class="fa-solid fa-image"></i> Image / Meme</button>
             <button class="tab-btn" onclick="switchTab('video')"><i class="fa-solid fa-file-video"></i> Video Upload</button>
         </div>
 
-        <!-- INPUT SECTION -->
         <div class="card input-card">
             <div id="textInputGroup">
                 <textarea id="inputText" placeholder="Paste a claim, news article text, or social media link." aria-label="Claim Text."></textarea>
@@ -906,7 +937,6 @@
             </div>
         </div>
 
-        <!-- RESULT SECTION -->
         <article id="resultCard" class="card result-card hidden">
             <div class="result-header">
                 <div>
@@ -916,7 +946,6 @@
                 <div id="verdictBadge" class="badge">ANALYZING</div>
             </div>
 
-            <!-- TRANSLATION BAR -->
             <div class="translate-bar">
                 <label><i class="fa-solid fa-language"></i> Translate Result:</label>
                 <select id="targetLang" class="translate-select">
@@ -944,7 +973,6 @@
         </article>
     </main>
 
-    <!-- PROFESSIONAL DISCLAIMER -->
     <div class="disclaimer-wrapper">
         <aside class="disclaimer-box">
             <i class="fa-solid fa-shield-halved"></i>
@@ -952,7 +980,6 @@
         </aside>
     </div>
 
-    <!-- FOOTER -->
     <footer class="footer">
         <div class="footer-grid">
             <div class="footer-col">
@@ -987,8 +1014,8 @@
                 <h4>SOCIAL</h4>
                 <ul>
                     <li><a href="https://www.facebook.com/share/196jZuggxg/" target="_blank" rel="noopener">Facebook</a></li>
-                    <li><a href="https://www.instagram.com/vikrm_bhardwaj?igsh=OWh4ZHprbW5rNTZv" target="_blank" rel="noopener">Instagram</a></li>
-                    <li><a href="https://www.youtube.com/@Vikram-b9r" target="_blank" rel="noopener">YouTube</a></li>
+                    <li><a href="https://www.instagram.com/vikrm_bhardwaj?igsh=OWh4ZHprbW5rNTZv" target="_blank" rel="noopener" aria-label="Instagram profile of vikrm_bhardwaj">Instagram</a></li>
+                    <li><a href="https://www.youtube.com/@Vikram-b9r" target="_blank" rel="noopener" aria-label="YouTube channel of Vikram-b9r">YouTube</a></li>
                 </ul>
             </div>
 
@@ -1012,20 +1039,16 @@
         </div>
     </footer>
 
-    <!-- MODAL WINDOW CONTAINER -->
     <div id="modalOverlay" class="modal-overlay hidden" onclick="closeModalOnOutsideClick(event)">
         <div class="modal-window">
             <div class="modal-header">
                 <h3 id="modalTitle">Modal Title</h3>
                 <button class="modal-close-btn" onclick="closeModal()">&times;</button>
             </div>
-            <div id="modalBody" class="modal-body">
-                <!-- Content injected dynamically -->
-            </div>
+            <div id="modalBody" class="modal-body"></div>
         </div>
     </div>
 
-    <!-- FLOATING AI ASSISTANT WIDGET -->
     <div class="chat-widget">
         <button class="chat-toggle-btn" onclick="toggleChat()" aria-label="Open AI Assistant"><i class="fa-solid fa-headset"></i></button>
 
@@ -1050,11 +1073,8 @@
         </div>
     </div>
 
-    <!-- JAVASCRIPT LOGIC -->
     <script>
-        // Set API_BASE_URL to empty for same-origin backend, or your Ngrok URL when testing
         const API_BASE_URL = '';
-
         let currentResult = null;
 
         function toggleSidebar() {
@@ -1144,7 +1164,6 @@
         function openModal(key) {
             const data = modalData[key];
             if (!data) return;
-
             document.getElementById('modalTitle').innerText = data.title;
             document.getElementById('modalBody').innerHTML = data.content;
             document.getElementById('modalOverlay').classList.remove('hidden');
@@ -1155,9 +1174,7 @@
         }
 
         function closeModalOnOutsideClick(e) {
-            if (e.target.id === 'modalOverlay') {
-                closeModal();
-            }
+            if (e.target.id === 'modalOverlay') closeModal();
         }
 
         function toggleTheme() {
@@ -1165,7 +1182,6 @@
             const currentTheme = html.getAttribute('data-theme');
             const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
             html.setAttribute('data-theme', newTheme);
-
             const icon = document.querySelector('#themeToggleBtn i');
             icon.className = newTheme === 'dark' ? 'fa-solid fa-moon' : 'fa-solid fa-sun';
         }
@@ -1198,16 +1214,12 @@
 
         function updateFileName() {
             const file = document.getElementById('videoFile').files[0];
-            if (file) {
-                document.getElementById('fileName').innerText = `Selected: ${file.name}`;
-            }
+            if (file) document.getElementById('fileName').innerText = `Selected: ${file.name}`;
         }
 
         function updateImageFileName() {
             const file = document.getElementById('imageFile').files[0];
-            if (file) {
-                document.getElementById('imageFileName').innerText = `Selected: ${file.name}`;
-            }
+            if (file) document.getElementById('imageFileName').innerText = `Selected: ${file.name}`;
         }
 
         function showLoading() {
@@ -1215,19 +1227,20 @@
             resultCard.classList.remove('hidden');
             
             document.getElementById('ratingScore').innerHTML = `
-                <div class="loading-dots">
-                    <span></span><span></span><span></span>
+                <div class="agent-loader-container">
+                    <span class="ai-chip groq"><i class="fa-solid fa-bolt"></i> Groq LLaMA</span>
+                    <span class="ai-chip gemini"><i class="fa-solid fa-wand-magic-sparkles"></i> Gemini</span>
+                    <span class="ai-chip mistral"><i class="fa-solid fa-brain"></i> Mistral</span>
                 </div>
             `;
-            document.getElementById('verdictBadge').innerText = "PROCESSING";
-            document.getElementById('factCheckText').innerText = "Analyzing content and verifying facts...";
-            document.getElementById('theCatchText').innerText = "Processing...";
-            document.getElementById('tldrText').innerText = "Processing...";
+            document.getElementById('verdictBadge').innerText = "CONSENSUS ACTIVE";
+            document.getElementById('factCheckText').innerText = "Analyzing claim across Groq, Gemini & Mistral in parallel for deep cross-verification...";
+            document.getElementById('theCatchText').innerText = "Running multi-agent consensus algorithms...";
+            document.getElementById('tldrText').innerText = "Evaluating verified sources and scientific consensus...";
         }
 
         function hideLoading() {
-            const resultCard = document.getElementById('resultCard');
-            resultCard.classList.add('hidden');
+            document.getElementById('resultCard').classList.add('hidden');
         }
 
         async function analyzeText() {
@@ -1243,7 +1256,6 @@
                 });
 
                 const data = await res.json();
-
                 if (!res.ok || data.error) {
                     hideLoading();
                     alert(data.error || "Unable to analyze claim.");
@@ -1273,7 +1285,6 @@
                 });
 
                 const data = await res.json();
-
                 if (!res.ok || data.error) {
                     hideLoading();
                     alert(data.error || "Error analyzing image file.");
@@ -1284,7 +1295,6 @@
                 renderResult(data);
             } catch (err) {
                 hideLoading();
-                console.error("Image Upload Error:", err);
                 alert("Image processing failed. Please try again with a valid photo or screenshot.");
             }
         }
@@ -1304,7 +1314,6 @@
                 });
 
                 const data = await res.json();
-
                 if (!res.ok || data.error) {
                     hideLoading();
                     alert(data.error || "Error analyzing video file.");
@@ -1315,7 +1324,6 @@
                 renderResult(data);
             } catch (err) {
                 hideLoading();
-                console.error("Video Upload Error:", err);
                 alert("Video processing failed. Please try again with a smaller file or shorter clip.");
             }
         }
@@ -1356,7 +1364,6 @@
                 });
 
                 const data = await res.json();
-
                 if (res.ok && !data.error) {
                     document.getElementById('factCheckText').innerText = data.factCheck;
                     document.getElementById('theCatchText').innerText = data.theCatch;
@@ -1365,7 +1372,6 @@
                     alert("Translation Server Error: " + (data.error || "Unknown server response"));
                 }
             } catch (err) {
-                console.error("Translation Fetch Error:", err);
                 alert("Network Error: Unable to reach translation endpoint. Ensure server is running.");
             } finally {
                 translateBtn.innerText = originalBtnText;
