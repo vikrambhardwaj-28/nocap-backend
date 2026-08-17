@@ -52,7 +52,7 @@ Return strict JSON schema only:
 }`;
 
 async function analyzeWithMultiAgent(claimText) {
-    const withTimeout = (promise, agentName, ms = 4500) => {
+    const withTimeout = (promise, agentName, ms = 15000) => {
         const timeout = new Promise((resolve) =>
             setTimeout(() => {
                 console.warn(`[TIMEOUT] ${agentName} took too long (> ${ms}ms).`);
