@@ -69,7 +69,7 @@ async function analyzeWithMultiAgent(claimText) {
                     { role: "system", content: "You are an objective fact-checking engine. Output strict JSON only." },
                     { role: "user", content: PROMPT_TEMPLATE(claimText) }
                 ],
-                model: "llama-3.3-70b-versatile",
+                model: "mixtral-8x7b-32768",
                 response_format: { type: "json_object" },
                 temperature: 0.1
             });
@@ -83,7 +83,7 @@ async function analyzeWithMultiAgent(claimText) {
     const runGemini = async () => {
         try {
             const response = await ai.models.generateContent({
-                model: 'gemini-3.6-flash',
+                model: 'gemini-2.5-flash',
                 contents: PROMPT_TEMPLATE(claimText),
                 config: { responseMimeType: 'application/json' }
             });
@@ -123,7 +123,7 @@ async function analyzeWithMultiAgent(claimText) {
     );
 
     if (validResults.length === 0) {
-        const fallback = await runGroq();
+        const fallback = await runGemini() || await runGroq();
         if (!fallback) throw new Error("Fact check service is temporarily unavailable.");
         validResults.push(fallback);
     }
@@ -323,38 +323,44 @@ app.post('/api/translate', async (req, res) => {
         const safeTheCatch = String(theCatch || '').replace(/["']/g, '');
         const safeTldr = String(tldr || '').replace(/["']/g, '');
 
-        const completion = await groq.chat.completions.create({
-            messages: [
-                {
-                    role: "system",
-                    content: `You are a professional translator. Translate the given text fields into ${targetLang}. Maintain accuracy and a modern tone. Respond ONLY in valid JSON format without markdown ticks.`
-                },
-                {
-                    role: "user",
-                    content: `Translate these fields to ${targetLang}:
-                    {
-                      "factCheck": "${safeFactCheck}",
-                      "theCatch": "${safeTheCatch}",
-                      "tldr": "${safeTldr}"
-                    }
-                    
-                    Return strict JSON structure:
-                    {
-                      "factCheck": "translated factCheck text",
-                      "theCatch": "translated theCatch text",
-                      "tldr": "translated tldr text"
-                    }`
-                }
-            ],
-            model: "llama-3.3-70b-versatile",
-            response_format: { type: "json_object" },
-            temperature: 0.1
-        });
+        const prompt = `You are a professional translator. Translate the given text fields into ${targetLang}. Maintain accuracy and a modern tone.
+Translate these fields:
+{
+  "factCheck": "${safeFactCheck}",
+  "theCatch": "${safeTheCatch}",
+  "tldr": "${safeTldr}"
+}
 
-        const rawResult = completion.choices[0].message.content;
-        const parsedData = JSON.parse(rawResult);
+Return strict JSON structure only:
+{
+  "factCheck": "translated factCheck text",
+  "theCatch": "translated theCatch text",
+  "tldr": "translated tldr text"
+}`;
 
-        return res.json(parsedData);
+        try {
+            const completion = await groq.chat.completions.create({
+                messages: [
+                    { role: "system", content: "You are an accurate translator. Output strict JSON only." },
+                    { role: "user", content: prompt }
+                ],
+                model: "mixtral-8x7b-32768",
+                response_format: { type: "json_object" },
+                temperature: 0.1
+            });
+
+            const parsedData = JSON.parse(completion.choices[0].message.content);
+            return res.json(parsedData);
+        } catch (groqErr) {
+            console.warn("[TRANSLATION FALLBACK TO GEMINI]:", groqErr.message);
+            const response = await ai.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: prompt,
+                config: { responseMimeType: 'application/json' }
+            });
+            const parsedData = JSON.parse(response.text);
+            return res.json(parsedData);
+        }
 
     } catch (err) {
         console.error("[TRANSLATION ERROR]:", err.message);
@@ -383,7 +389,7 @@ app.post('/api/chat-assistant', async (req, res) => {
                 { role: "system", content: systemInstruction },
                 { role: "user", content: message }
             ],
-            model: "llama-3.3-70b-versatile",
+            model: "mixtral-8x7b-32768",
             temperature: 0.5,
             max_tokens: 250
         });
@@ -392,7 +398,15 @@ app.post('/api/chat-assistant', async (req, res) => {
         res.json({ reply });
     } catch (err) {
         console.error("CHAT ASSISTANT ERROR:", err);
-        res.status(500).json({ reply: "Sorry, I am having trouble processing your request right now." });
+        try {
+            const geminiRes = await ai.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: `${systemInstruction}\nUser: ${message}`
+            });
+            res.json({ reply: geminiRes.text });
+        } catch (fallbackErr) {
+            res.status(500).json({ reply: "Sorry, I am having trouble processing your request right now." });
+        }
     }
 });
 
