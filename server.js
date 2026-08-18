@@ -69,7 +69,7 @@ async function analyzeWithMultiAgent(claimText) {
                     { role: "system", content: "You are an objective fact-checking engine. Output strict JSON only." },
                     { role: "user", content: PROMPT_TEMPLATE(claimText) }
                 ],
-                model: "llama-3.1-8b-instant",
+                model: "llama-3.3-70b-versatile",
                 response_format: { type: "json_object" },
                 temperature: 0.1
             });
@@ -83,7 +83,7 @@ async function analyzeWithMultiAgent(claimText) {
     const runGemini = async () => {
         try {
             const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
+                model: 'gemini-3.6-flash',
                 contents: PROMPT_TEMPLATE(claimText),
                 config: { responseMimeType: 'application/json' }
             });
@@ -346,7 +346,7 @@ app.post('/api/translate', async (req, res) => {
                     }`
                 }
             ],
-            model: "llama-3.1-8b-instant",
+            model: "llama-3.3-70b-versatile",
             response_format: { type: "json_object" },
             temperature: 0.1
         });
@@ -383,7 +383,7 @@ app.post('/api/chat-assistant', async (req, res) => {
                 { role: "system", content: systemInstruction },
                 { role: "user", content: message }
             ],
-            model: "llama-3.1-8b-instant",
+            model: "llama-3.3-70b-versatile",
             temperature: 0.5,
             max_tokens: 250
         });
