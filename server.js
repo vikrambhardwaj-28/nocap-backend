@@ -52,7 +52,7 @@ Return strict JSON schema only:
 }`;
 
 async function analyzeWithMultiAgent(claimText) {
-    const withTimeout = (promise, agentName, ms = 15000) => {
+    const withTimeout = (promise, agentName, ms = 20000) => {
         const timeout = new Promise((resolve) =>
             setTimeout(() => {
                 console.warn(`[TIMEOUT] ${agentName} took too long (> ${ms}ms).`);
@@ -69,7 +69,7 @@ async function analyzeWithMultiAgent(claimText) {
                     { role: "system", content: "You are an objective fact-checking engine. Output strict JSON only." },
                     { role: "user", content: PROMPT_TEMPLATE(claimText) }
                 ],
-                model: "gemma2-9b-it",
+                model: "openai/gpt-oss-20b",
                 response_format: { type: "json_object" },
                 temperature: 0.1
             });
@@ -123,7 +123,7 @@ async function analyzeWithMultiAgent(claimText) {
     );
 
     if (validResults.length === 0) {
-        const fallback = await runGemini() || await runGroq();
+        const fallback = await runMistral() || await runGemini() || await runGroq();
         if (!fallback) throw new Error("Fact check service is temporarily unavailable.");
         validResults.push(fallback);
     }
@@ -136,7 +136,7 @@ async function analyzeWithMultiAgent(claimText) {
     if (avgRating <= 4) consensusVerdict = "TOTAL CAP 🧢🧢🧢";
     else if (avgRating <= 8) consensusVerdict = "PARTIAL CAP 🧢🧢";
 
-    const primaryReport = resGemini || resGroq || resMistral || validResults[0];
+    const primaryReport = resMistral || resGemini || resGroq || validResults[0];
 
     return {
         rating: avgRating,
@@ -323,7 +323,7 @@ app.post('/api/translate', async (req, res) => {
         const safeTheCatch = String(theCatch || '').replace(/["']/g, '');
         const safeTldr = String(tldr || '').replace(/["']/g, '');
 
-        const prompt = `Translate the given text fields accurately into ${targetLang}. Maintain accuracy and a modern tone.
+        const prompt = `Translate the given text fields accurately into ${targetLang}. Maintain accuracy and a natural tone.
 Translate these fields:
 {
   "factCheck": "${safeFactCheck}",
@@ -338,26 +338,28 @@ Return strict JSON structure only:
   "tldr": "translated tldr text"
 }`;
 
+        // Primary: Mistral Small (Super Fast & Reliable)
         try {
+            const mistralRes = await mistral.chat.complete({
+                model: "mistral-small-latest",
+                messages: [
+                    { role: "system", content: "You are an accurate translator. Output strict JSON only." },
+                    { role: "user", content: prompt }
+                ],
+                responseFormat: { type: "json_object" },
+                temperature: 0.1
+            });
+            const parsedData = JSON.parse(mistralRes.choices[0].message.content);
+            return res.json(parsedData);
+        } catch (mistralErr) {
+            console.warn("[TRANSLATION FALLBACK TO GEMINI]:", mistralErr.message);
+            // Fallback: Gemini
             const response = await ai.models.generateContent({
                 model: 'gemini-3.6-flash',
                 contents: prompt,
                 config: { responseMimeType: 'application/json' }
             });
             const parsedData = JSON.parse(response.text);
-            return res.json(parsedData);
-        } catch (geminiErr) {
-            console.warn("[TRANSLATION FALLBACK TO GROQ]:", geminiErr.message);
-            const completion = await groq.chat.completions.create({
-                messages: [
-                    { role: "system", content: "You are an accurate translator. Output strict JSON only." },
-                    { role: "user", content: prompt }
-                ],
-                model: "gemma2-9b-it",
-                response_format: { type: "json_object" },
-                temperature: 0.1
-            });
-            const parsedData = JSON.parse(completion.choices[0].message.content);
             return res.json(parsedData);
         }
 
@@ -383,24 +385,24 @@ app.post('/api/chat-assistant', async (req, res) => {
     }
 
     try {
-        const geminiRes = await ai.models.generateContent({
-            model: 'gemini-3.6-flash',
-            contents: `${systemInstruction}\nUser: ${message}`
+        const mistralRes = await mistral.chat.complete({
+            model: "mistral-small-latest",
+            messages: [
+                { role: "system", content: systemInstruction },
+                { role: "user", content: message }
+            ],
+            temperature: 0.5,
+            maxTokens: 250
         });
-        res.json({ reply: geminiRes.text });
+        res.json({ reply: mistralRes.choices[0].message.content });
     } catch (err) {
         console.error("CHAT ASSISTANT ERROR:", err);
         try {
-            const completion = await groq.chat.completions.create({
-                messages: [
-                    { role: "system", content: systemInstruction },
-                    { role: "user", content: message }
-                ],
-                model: "gemma2-9b-it",
-                temperature: 0.5,
-                max_tokens: 250
+            const geminiRes = await ai.models.generateContent({
+                model: 'gemini-3.6-flash',
+                contents: `${systemInstruction}\nUser: ${message}`
             });
-            res.json({ reply: completion.choices[0].message.content });
+            res.json({ reply: geminiRes.text });
         } catch (fallbackErr) {
             res.status(500).json({ reply: "Sorry, I am having trouble processing your request right now." });
         }
